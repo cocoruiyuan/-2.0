@@ -584,17 +584,20 @@ def add_light_paper_texture(
     rng: random.Random,
 ) -> None:
     """
-    添加纸纤维、轻微旧化和不均匀底色。
+    添加更干净的纸张纹理。
+
+    这一版去掉了与文字无关的细小划线，
+    只保留非常轻微的明暗颗粒和少量旧化。
     """
     draw = ImageDraw.Draw(image)
     age = settings.paper_age
 
-    grain_count = 1500 + int(age * 4200)
+    grain_count = 1100 + int(age * 2600)
 
     for _ in range(grain_count):
         x = rng.randint(0, PAGE_WIDTH - 1)
         y = rng.randint(0, PAGE_HEIGHT - 1)
-        spread = 3 + int(age * 8)
+        spread = 2 + int(age * 5)
         shade = rng.randint(-spread, spread)
 
         draw.point(
@@ -602,29 +605,12 @@ def add_light_paper_texture(
             fill=(
                 clamp(248 + shade),
                 clamp(246 + shade),
-                clamp(239 + shade - int(age * 4)),
+                clamp(240 + shade - int(age * 3)),
             ),
         )
 
-    fiber_count = 40 + int(age * 110)
-
-    for _ in range(fiber_count):
-        x1 = rng.randint(0, PAGE_WIDTH - 1)
-        y1 = rng.randint(0, PAGE_HEIGHT - 1)
-        x2 = x1 + rng.randint(-18, 18)
-        y2 = y1 + rng.randint(-5, 5)
-
-        draw.line(
-            (x1, y1, x2, y2),
-            fill=(
-                240 - int(age * 10),
-                237 - int(age * 9),
-                230 - int(age * 7),
-            ),
-            width=1,
-        )
-
-    if age > 0.15:
+    # 只在旧化较明显时加非常淡的污渍，不再添加随机细线。
+    if age > 0.22:
         stain_layer = Image.new(
             "RGBA",
             image.size,
@@ -632,21 +618,21 @@ def add_light_paper_texture(
         )
         stain_draw = ImageDraw.Draw(stain_layer)
 
-        stain_count = 1 + int(age * 6)
+        stain_count = 1 + int((age - 0.2) * 3)
 
         for _ in range(stain_count):
-            cx = rng.randint(80, PAGE_WIDTH - 80)
-            cy = rng.randint(80, PAGE_HEIGHT - 80)
-            rx = rng.randint(30, 110)
-            ry = rng.randint(20, 80)
+            cx = rng.randint(120, PAGE_WIDTH - 120)
+            cy = rng.randint(120, PAGE_HEIGHT - 120)
+            rx = rng.randint(45, 100)
+            ry = rng.randint(28, 70)
 
             stain_draw.ellipse(
                 (cx - rx, cy - ry, cx + rx, cy + ry),
-                fill=(146, 116, 75, rng.randint(3, 10)),
+                fill=(150, 120, 78, rng.randint(2, 6)),
             )
 
         stain_layer = stain_layer.filter(
-            ImageFilter.GaussianBlur(radius=22)
+            ImageFilter.GaussianBlur(radius=26)
         )
         image.alpha_composite(stain_layer)
 
@@ -1348,32 +1334,46 @@ def draw_strikethrough(
     height: int,
     color: tuple[int, int, int],
     rng: random.Random,
+    start_ratio: float = 0.0,
+    end_ratio: float = 1.0,
 ) -> None:
     """
-    绘制一到两道手写删除线。
+    绘制删除线。
+    支持只划掉单词中的一部分，让笔误更像真实学生作业。
     """
     draw = ImageDraw.Draw(page)
 
-    line_count = 1 if rng.random() < 0.43 else 2
+    start_ratio = max(0.0, min(1.0, start_ratio))
+    end_ratio = max(start_ratio + 0.05, min(1.0, end_ratio))
+
+    line_left = left + int(width * start_ratio)
+    line_right = left + int(width * end_ratio)
+    line_width = max(8, line_right - line_left)
+
+    line_count = rng.choices(
+        [1, 2],
+        weights=[68, 32],
+        k=1,
+    )[0]
 
     for index in range(line_count):
         start_y = top + int(
-            height * rng.uniform(0.38, 0.66)
+            height * rng.uniform(0.40, 0.64)
         ) + index * rng.randint(1, 3)
 
         end_y = start_y + rng.randint(-4, 4)
 
-        middle_x = left + width // 2
+        middle_x = line_left + line_width // 2
         middle_y = (
             (start_y + end_y) // 2
             + rng.randint(-3, 3)
         )
 
         points = sample_quadratic_curve(
-            (left - 3, start_y),
+            (line_left - 2, start_y),
             (middle_x, middle_y),
-            (left + width + 4, end_y),
-            steps=max(14, width // 5),
+            (line_right + 2, end_y),
+            steps=max(10, line_width // 5),
         )
 
         draw.line(
@@ -1382,11 +1382,68 @@ def draw_strikethrough(
                 color[0],
                 color[1],
                 color[2],
-                rng.randint(190, 235),
+                rng.randint(175, 228),
             ),
-            width=1 if index else 2,
+            width=1 if index else rng.choice([1, 2]),
             joint="curve",
         )
+
+
+def choose_error_fragment(
+    word: str,
+    left: int,
+    width: int,
+    rng: random.Random,
+) -> dict[str, object]:
+    """
+    选择更像真实笔误的片段：
+    - 开头 1~3 个字母
+    - 中间 1~3 个字母
+    - 结尾 1~4 个字母
+    """
+    length = len(word)
+
+    if length <= 3:
+        start_index = 0
+        end_index = length
+    else:
+        region = rng.choices(
+            ["prefix", "middle", "suffix"],
+            weights=[18, 27, 55],
+            k=1,
+        )[0]
+
+        if region == "prefix":
+            frag_len = min(length, rng.randint(1, min(3, length)))
+            start_index = 0
+            end_index = frag_len
+
+        elif region == "middle":
+            frag_len = min(length, rng.randint(1, min(3, length)))
+            max_start = max(1, length - frag_len - 1)
+            start_index = rng.randint(1, max_start)
+            end_index = start_index + frag_len
+
+        else:
+            frag_len = min(length, rng.randint(1, min(4, length)))
+            start_index = max(0, length - frag_len)
+            end_index = length
+
+    start_ratio = start_index / max(1, length)
+    end_ratio = end_index / max(1, length)
+
+    fragment_left = left + int(width * start_ratio)
+    fragment_width = max(10, int(width * (end_ratio - start_ratio)))
+
+    return {
+        "text": word[start_index:end_index],
+        "start_ratio": start_ratio,
+        "end_ratio": end_ratio,
+        "left": fragment_left,
+        "width": fragment_width,
+        "start_index": start_index,
+        "end_index": end_index,
+    }
 
 
 def draw_scribble_correction(
@@ -1477,20 +1534,28 @@ def draw_rewrite_above(
     top: int,
     settings: RenderSettings,
     rng: random.Random,
+    compact: bool = False,
 ) -> None:
     """
-    用同一套笔迹在原词上方重写。
+    在原词上方重写，位置更像学生快速改错。
     """
     rewrite_settings = replace(
         settings,
-        font_size=max(24, settings.font_size - 9),
+        font_size=max(
+            22 if compact else 24,
+            settings.font_size - (11 if compact else 9),
+        ),
+        texture_strength=min(
+            1.0,
+            settings.texture_strength + 0.04,
+        ),
         randomness=max(0, settings.randomness - 1),
         correction_level=0,
         teacher_marks=0,
         flourish_level=0,
         baseline_wave=0.0,
         connection_strength=min(
-            0.75,
+            0.72,
             settings.connection_strength,
         ),
     )
@@ -1501,11 +1566,11 @@ def draw_rewrite_above(
         rng,
     )
 
-    rewrite_x = left + rng.randint(0, 9)
+    rewrite_x = left + rng.randint(-1, 8)
     rewrite_y = (
         top
-        - int(settings.font_size * 0.48)
-        + rng.randint(-3, 2)
+        - int(settings.font_size * (0.42 if compact else 0.48))
+        + rng.randint(-4, 3)
     )
 
     page.alpha_composite(
@@ -1515,6 +1580,213 @@ def draw_rewrite_above(
             max(0, rewrite_y),
         ),
     )
+
+
+def maybe_draw_correction(
+    page: Image.Image,
+    word: str,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    baseline_y: int,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    """
+    随机生成更自然的学生笔误：
+    1. 局部删除并在上方重写
+    2. 整词删除并重写
+    3. 快速涂抹
+    4. 插入符号并补写短片段
+    5. 重叠描写后划掉
+    """
+    if settings.correction_level <= 0:
+        return
+
+    clean_word = word.strip(
+        ".,!?;:…—-()[]{}«»\"'"
+    )
+
+    if len(clean_word) < 3:
+        return
+
+    # 触发概率更疏、更不规则
+    base_denominator = {
+        1: 29,
+        2: 16,
+        3: 10,
+    }.get(settings.correction_level, 16)
+
+    length_bonus = -1 if len(clean_word) >= 8 else 0
+    local_denominator = max(6, base_denominator + length_bonus + rng.randint(-2, 2))
+
+    if rng.randint(1, local_denominator) != 1:
+        return
+
+    color = varied_ink_color(
+        settings,
+        rng,
+    )
+
+    fragment = choose_error_fragment(
+        clean_word,
+        left,
+        width,
+        rng,
+    )
+
+    # 较自然的分布：局部改错最常见，整词重写和乱涂少一些
+    style = rng.choices(
+        [
+            "partial_rewrite",
+            "whole_rewrite",
+            "scribble",
+            "caret",
+            "overwrite",
+        ],
+        weights=[34, 20, 17, 18, 11],
+        k=1,
+    )[0]
+
+    if style == "partial_rewrite":
+        draw_strikethrough(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+            start_ratio=float(fragment["start_ratio"]),
+            end_ratio=float(fragment["end_ratio"]),
+        )
+
+        rewrite_fragment = str(fragment["text"])
+        if rewrite_fragment:
+            draw_rewrite_above(
+                page,
+                rewrite_fragment,
+                int(fragment["left"]),
+                top,
+                settings,
+                rng,
+                compact=True,
+            )
+
+    elif style == "whole_rewrite":
+        draw_strikethrough(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+
+        draw_rewrite_above(
+            page,
+            clean_word,
+            left,
+            top,
+            settings,
+            rng,
+            compact=False,
+        )
+
+    elif style == "scribble":
+        scribble_left = int(fragment["left"]) if rng.random() < 0.65 else left
+        scribble_width = int(fragment["width"]) if rng.random() < 0.65 else width
+
+        draw_scribble_correction(
+            page,
+            scribble_left,
+            top,
+            scribble_width,
+            height,
+            color,
+            rng,
+        )
+
+        if rng.random() < 0.35:
+            draw_rewrite_above(
+                page,
+                str(fragment["text"]) or clean_word,
+                scribble_left,
+                top,
+                settings,
+                rng,
+                compact=True,
+            )
+
+    elif style == "caret":
+        caret_x = (
+            int(fragment["left"])
+            + int(fragment["width"]) // 2
+        )
+
+        draw_caret_mark(
+            page,
+            caret_x,
+            baseline_y,
+            color,
+            rng,
+        )
+
+        rewrite_fragment = str(fragment["text"])
+        if not rewrite_fragment:
+            rewrite_fragment = clean_word[: max(1, min(3, len(clean_word)))]
+
+        draw_rewrite_above(
+            page,
+            rewrite_fragment,
+            caret_x - 6,
+            top,
+            settings,
+            rng,
+            compact=True,
+        )
+
+    else:
+        duplicate_settings = replace(
+            settings,
+            correction_level=0,
+            teacher_marks=0,
+            flourish_level=0,
+            baseline_wave=0.0,
+        )
+
+        duplicate, _, _, _ = render_word_image(
+            clean_word,
+            duplicate_settings,
+            rng,
+        )
+
+        duplicate_alpha = duplicate.getchannel("A").point(
+            lambda pixel: int(pixel * 0.40)
+        )
+        duplicate.putalpha(duplicate_alpha)
+
+        page.alpha_composite(
+            duplicate,
+            (
+                max(0, left + rng.randint(-2, 3)),
+                max(0, top + rng.randint(-2, 2)),
+            ),
+        )
+
+        draw_strikethrough(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+            start_ratio=0.0 if rng.random() < 0.55 else float(fragment["start_ratio"]),
+            end_ratio=1.0 if rng.random() < 0.55 else float(fragment["end_ratio"]),
+        )
 
 
 def maybe_draw_correction(
@@ -2662,7 +2934,7 @@ st.set_page_config(
 )
 
 st.title("✍️ 俄语学生作业本生成器")
-st.caption("学生作业本终极版：预设、俄语本子页眉、真实笔迹纹理、涂改、批改、扫描和手机拍照外观。")
+st.caption("学生作业本自然改错版：笔误更像真实学生作业，涂改方式更随机、更自然。")
 
 font_files = get_font_files()
 
@@ -2874,8 +3146,9 @@ with st.sidebar:
             preset["correction_level"]
         ),
         help=(
-            "包括删除线、快速涂抹、插入符号、"
-            "上方重写和重叠描写。"
+            "会随机出现更自然的学生笔误："
+            "局部划掉、整词重写、插入补写、"
+            "快速涂抹和重叠改写。"
         ),
         key=f"correction_{preset_key}",
     )
