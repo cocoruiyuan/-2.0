@@ -3586,6 +3586,7 @@ def save_result_to_session(pages: list[Image.Image]) -> None:
 # Streamlit 页面
 # ============================================================
 
+
 st.set_page_config(
     page_title="手写生成器",
     page_icon="✒️",
@@ -3598,19 +3599,22 @@ st.set_page_config(
 
 
 # ============================================================
-# 页面视觉样式
+# 页面样式
 # ============================================================
 st.markdown(
     """
     <style>
     :root {
-        --ink: #10245c;
-        --muted: #68779b;
-        --primary: #4169f6;
-        --secondary: #9b4df1;
-        --line: rgba(92, 118, 197, 0.16);
-        --panel: rgba(255, 255, 255, 0.90);
-        --shadow: 0 18px 50px rgba(44, 67, 135, 0.11);
+        --primary-color: #536df5;
+        --primary: #536df5;
+        --primary-dark: #3f51d9;
+        --purple: #9255e9;
+        --ink: #12275b;
+        --muted: #7280a1;
+        --border: #dfe5f3;
+        --soft-border: rgba(88, 109, 182, 0.14);
+        --surface: rgba(255, 255, 255, 0.94);
+        --shadow: 0 14px 38px rgba(46, 66, 128, 0.09);
     }
 
     html {
@@ -3619,250 +3623,355 @@ st.markdown(
 
     .stApp {
         background:
-            radial-gradient(circle at 8% 0%, rgba(72, 139, 255, 0.14), transparent 28%),
-            radial-gradient(circle at 94% 3%, rgba(160, 83, 244, 0.12), transparent 28%),
-            linear-gradient(180deg, #f8fbff 0%, #f5f7ff 48%, #fbfcff 100%);
+            radial-gradient(circle at 12% 0%, rgba(71, 130, 255, 0.11), transparent 27%),
+            radial-gradient(circle at 94% 2%, rgba(147, 77, 235, 0.10), transparent 28%),
+            linear-gradient(180deg, #f8faff 0%, #f6f8fe 52%, #fbfcff 100%);
         color: var(--ink);
     }
 
-    [data-testid="stHeader"] {
-        background: transparent;
-    }
-
-    [data-testid="stToolbar"] {
-        right: 1.25rem;
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"],
+    footer,
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
     }
 
     .block-container {
-        max-width: 1540px;
-        padding-top: 1.2rem;
-        padding-bottom: 3rem;
+        max-width: 1510px;
+        padding-top: 1.15rem;
+        padding-bottom: 2.7rem;
     }
 
+    /* ---------- 侧边栏 ---------- */
     section[data-testid="stSidebar"] {
-        width: 346px !important;
-        background:
-            linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,249,255,0.96));
-        border-right: 1px solid rgba(91, 112, 184, 0.13);
-        box-shadow: 14px 0 42px rgba(42, 62, 125, 0.07);
+        width: 334px !important;
+        min-width: 334px !important;
+        background: rgba(252, 253, 255, 0.98);
+        border-right: 1px solid rgba(78, 102, 177, 0.12);
+        box-shadow: 10px 0 34px rgba(44, 62, 119, 0.05);
     }
 
     section[data-testid="stSidebar"] > div {
-        padding-top: 1.15rem;
-        padding-left: 1.2rem;
-        padding-right: 1.2rem;
+        padding-top: 1rem;
+        padding-left: 1.15rem;
+        padding-right: 1.15rem;
     }
 
     section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] p {
-        color: #1c315f;
-    }
-
-    section[data-testid="stSidebar"] [data-baseweb="select"] > div,
-    section[data-testid="stSidebar"] input,
-    section[data-testid="stSidebar"] textarea {
-        border-radius: 12px !important;
-        border-color: rgba(82, 108, 187, 0.18) !important;
-        background: rgba(255,255,255,0.92) !important;
-    }
-
-    section[data-testid="stSidebar"] [data-testid="stExpander"] {
-        border: 1px solid rgba(82, 108, 187, 0.14);
-        border-radius: 15px;
-        background: rgba(250,251,255,0.85);
+        color: #263a6c !important;
     }
 
     .sidebar-brand {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 10px 4px 18px;
-        margin-bottom: 4px;
-        border-bottom: 1px solid rgba(91,112,184,0.12);
+        padding: 7px 2px 16px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid rgba(82, 105, 177, 0.12);
     }
 
     .sidebar-logo,
     .hero-logo {
         display: grid;
         place-items: center;
-        color: white;
-        background: linear-gradient(135deg, #3578ff, #8759f6);
-        box-shadow: 0 10px 24px rgba(72, 91, 230, 0.28);
+        color: #fff;
+        background: linear-gradient(135deg, #4779ff, #8957ec);
+        box-shadow: 0 10px 23px rgba(78, 84, 224, 0.25);
     }
 
     .sidebar-logo {
-        width: 44px;
-        height: 44px;
+        width: 43px;
+        height: 43px;
         border-radius: 13px;
-        font-size: 23px;
+        font-size: 22px;
     }
 
-    .sidebar-brand-title {
-        color: #10245c;
-        font-size: 20px;
-        font-weight: 800;
+    .sidebar-title {
+        color: #12275b;
+        font-size: 19px;
+        font-weight: 850;
         line-height: 1.15;
     }
 
-    .sidebar-brand-subtitle {
-        color: #7582a5;
-        font-size: 12px;
+    .sidebar-copy {
         margin-top: 3px;
+        color: #7784a4;
+        font-size: 12px;
     }
 
-    .sidebar-section-title {
-        margin: 14px 0 8px;
-        color: #10245c;
-        font-size: 16px;
-        font-weight: 800;
+    .sidebar-label {
+        margin: 14px 0 7px;
+        color: #12275b;
+        font-size: 15px;
+        font-weight: 850;
     }
 
+    /* ---------- 彻底移除控件黑边 ---------- */
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div > div,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="select"] > div > div {
+        color: #263a6c !important;
+        background-color: #ffffff !important;
+        border-color: transparent !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        min-height: 43px;
+        border: 1px solid var(--border) !important;
+        border-radius: 11px !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+    }
+
+    div[data-baseweb="select"] > div:hover {
+        border-color: #bdc9ea !important;
+    }
+
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #7184ec !important;
+        box-shadow: 0 0 0 3px rgba(83, 109, 245, 0.11) !important;
+    }
+
+    div[data-baseweb="select"] svg {
+        fill: #6879a4 !important;
+    }
+
+    div[role="listbox"] {
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        background: #ffffff !important;
+        box-shadow: 0 14px 36px rgba(39, 54, 103, 0.14) !important;
+        overflow: hidden;
+    }
+
+    div[role="option"] {
+        color: #263a6c !important;
+        background: #ffffff !important;
+    }
+
+    div[role="option"]:hover,
+    div[role="option"][aria-selected="true"] {
+        background: #eef2ff !important;
+    }
+
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    input[type="text"],
+    textarea {
+        color: #263a6c !important;
+        caret-color: #536df5 !important;
+        background: #ffffff !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stTextArea"] textarea:hover,
+    [data-testid="stTextInput"] input:hover,
+    [data-testid="stNumberInput"] input:hover {
+        border-color: #bdc9ea !important;
+    }
+
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus {
+        border-color: #7184ec !important;
+        box-shadow: 0 0 0 3px rgba(83, 109, 245, 0.11) !important;
+        outline: none !important;
+    }
+
+    button,
+    button:focus,
+    button:active {
+        outline: none !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        border: 1.5px dashed #bdc9ee !important;
+        border-radius: 15px !important;
+        background: linear-gradient(145deg, #f9fbff, #fbf9ff) !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: #7789ef !important;
+        background: linear-gradient(145deg, #f5f8ff, #faf6ff) !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button,
+    [data-testid="stFileUploader"] button {
+        color: #415bc5 !important;
+        background: #eef2ff !important;
+        border: 1px solid #d5def8 !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+        font-weight: 750 !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button:hover,
+    [data-testid="stFileUploader"] button:hover {
+        color: #334bb2 !important;
+        background: #e5ebff !important;
+        border-color: #bcc9f4 !important;
+    }
+
+    [data-testid="stSlider"] {
+        padding-top: 2px;
+        padding-bottom: 2px;
+    }
+
+    [data-testid="stSlider"] [role="slider"] {
+        background: #ffffff !important;
+        border: 2px solid #536df5 !important;
+        box-shadow: 0 2px 8px rgba(63, 81, 217, 0.20) !important;
+    }
+
+    [data-testid="stCheckbox"] svg {
+        color: #536df5 !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stExpander"] {
+        margin-top: 9px;
+        border: 1px solid var(--soft-border);
+        border-radius: 14px;
+        background: rgba(249, 250, 255, 0.92);
+        overflow: hidden;
+    }
+
+    /* ---------- 页头 ---------- */
     .hero-shell {
         position: relative;
         overflow: hidden;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 28px;
-        padding: 22px 26px;
-        margin-bottom: 18px;
-        border: 1px solid rgba(90, 115, 205, 0.13);
-        border-radius: 23px;
+        gap: 22px;
+        padding: 20px 23px;
+        margin-bottom: 14px;
+        border: 1px solid var(--soft-border);
+        border-radius: 21px;
         background:
-            linear-gradient(118deg, rgba(255,255,255,0.97), rgba(246,248,255,0.92)),
-            radial-gradient(circle at 100% 0%, rgba(162,79,246,0.14), transparent 35%);
+            linear-gradient(118deg, rgba(255,255,255,0.98), rgba(247,248,255,0.94));
         box-shadow: var(--shadow);
     }
 
-    .hero-shell::before {
+    .hero-shell::after {
         content: "";
         position: absolute;
-        width: 260px;
-        height: 260px;
-        right: -95px;
-        top: -155px;
+        right: -80px;
+        top: -110px;
+        width: 250px;
+        height: 250px;
         border-radius: 999px;
-        background: radial-gradient(circle, rgba(123,86,246,0.18), transparent 68%);
+        background: radial-gradient(circle, rgba(145,83,235,0.14), transparent 69%);
+        pointer-events: none;
     }
 
     .hero-brand {
         position: relative;
+        z-index: 1;
         display: flex;
         align-items: center;
-        gap: 16px;
-        min-width: 0;
+        gap: 15px;
     }
 
     .hero-logo {
-        width: 58px;
-        height: 58px;
-        flex: 0 0 auto;
-        border-radius: 17px;
-        font-size: 30px;
+        width: 54px;
+        height: 54px;
+        border-radius: 16px;
+        font-size: 27px;
     }
 
     .hero-title {
         margin: 0;
-        color: #0d2057;
-        font-size: clamp(25px, 2.2vw, 38px);
-        line-height: 1.08;
+        color: #10245c;
+        font-size: clamp(26px, 2.1vw, 36px);
+        line-height: 1.1;
         font-weight: 900;
-        letter-spacing: -0.02em;
     }
 
-    .hero-tagline {
-        margin-top: 7px;
-        color: #617198;
-        font-size: 15px;
+    .hero-subtitle {
+        margin-top: 6px;
+        color: #6b789b;
+        font-size: 14px;
     }
 
-    .hero-actions {
+    .hero-tip {
         position: relative;
+        z-index: 1;
+        padding: 10px 14px;
+        border: 1px solid #dfe4f3;
+        border-radius: 12px;
+        color: #344c86;
+        background: rgba(255,255,255,0.82);
+        font-size: 13px;
+        font-weight: 750;
+        white-space: nowrap;
+    }
+
+    /* ---------- 步骤提示 ---------- */
+    .steps-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin: 0 0 16px;
+    }
+
+    .step-card {
         display: flex;
         align-items: center;
         gap: 10px;
-        flex-wrap: wrap;
-        justify-content: flex-end;
+        padding: 12px 14px;
+        border: 1px solid var(--soft-border);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.84);
     }
 
-    .hero-chip {
-        padding: 11px 15px;
-        border: 1px solid rgba(81,105,187,0.16);
-        border-radius: 13px;
-        color: #243a70;
-        background: rgba(255,255,255,0.82);
-        font-size: 14px;
-        font-weight: 700;
-    }
-
-    .hero-cta {
-        padding: 12px 18px;
-        border-radius: 13px;
-        color: white !important;
-        text-decoration: none !important;
-        background: linear-gradient(105deg, #3c72ff, #9a45ed);
-        box-shadow: 0 11px 24px rgba(88,76,231,0.26);
-        font-size: 14px;
-        font-weight: 800;
-    }
-
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin: 0 0 22px;
-    }
-
-    .feature-card {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-height: 82px;
-        padding: 15px 16px;
-        border: 1px solid rgba(89,111,188,0.12);
-        border-radius: 17px;
-        background: rgba(255,255,255,0.83);
-        box-shadow: 0 9px 24px rgba(44,67,135,0.06);
-    }
-
-    .feature-icon {
+    .step-number {
         display: grid;
         place-items: center;
-        width: 40px;
-        height: 40px;
+        width: 29px;
+        height: 29px;
         flex: 0 0 auto;
-        border-radius: 12px;
-        background: linear-gradient(135deg, rgba(67,111,255,0.15), rgba(155,76,239,0.14));
-        color: #4469ef;
-        font-size: 20px;
+        border-radius: 9px;
+        color: #ffffff;
+        background: linear-gradient(135deg, #5175f5, #8a5ae8);
+        font-size: 13px;
+        font-weight: 850;
     }
 
-    .feature-title {
-        color: #173065;
-        font-size: 14px;
+    .step-title {
+        color: #243b70;
+        font-size: 13px;
         font-weight: 800;
     }
 
-    .feature-copy {
-        margin-top: 3px;
-        color: #7b87a7;
-        font-size: 12px;
-        line-height: 1.4;
+    .step-copy {
+        margin-top: 2px;
+        color: #8490ad;
+        font-size: 11px;
     }
 
+    /* ---------- 主面板 ---------- */
     [data-testid="stVerticalBlockBorderWrapper"] {
-        border: 1px solid rgba(83, 107, 184, 0.13) !important;
-        border-radius: 21px !important;
-        background: rgba(255,255,255,0.88) !important;
+        border: 1px solid var(--soft-border) !important;
+        border-radius: 19px !important;
+        background: rgba(255,255,255,0.91) !important;
         box-shadow: var(--shadow);
         overflow: hidden;
     }
 
     [data-testid="stVerticalBlockBorderWrapper"] > div {
-        padding: 1.05rem 1.15rem 1.15rem;
+        padding: 1.05rem 1.1rem 1.15rem;
     }
 
-    .panel-heading {
+    .panel-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -3870,82 +3979,85 @@ st.markdown(
         margin-bottom: 10px;
     }
 
-    .panel-kicker {
-        margin-bottom: 4px;
-        color: #7d89aa;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-    }
-
     .panel-title {
-        color: #10245c;
+        color: #12275b;
         font-size: 20px;
-        font-weight: 900;
-        line-height: 1.2;
+        font-weight: 880;
     }
 
-    .panel-badge {
+    .panel-description {
+        margin-top: 3px;
+        color: #7b87a5;
+        font-size: 12px;
+    }
+
+    .panel-chip {
         padding: 6px 10px;
         border-radius: 999px;
-        color: #6251d7;
-        background: rgba(103,87,232,0.09);
-        font-size: 12px;
+        color: #5b50ce;
+        background: rgba(91,80,206,0.09);
+        font-size: 11px;
         font-weight: 800;
         white-space: nowrap;
     }
 
-    [data-testid="stFileUploader"] section {
-        min-height: 126px;
-        border: 1.5px dashed rgba(76,105,209,0.30) !important;
-        border-radius: 16px !important;
-        background:
-            linear-gradient(145deg, rgba(247,250,255,0.96), rgba(252,249,255,0.94)) !important;
-    }
-
-    [data-testid="stFileUploader"] section:hover {
-        border-color: rgba(83,90,232,0.60) !important;
-        background: linear-gradient(145deg, #f5f9ff, #faf5ff) !important;
-    }
-
     [data-testid="stTextArea"] textarea {
-        min-height: 250px !important;
-        border: 1px solid rgba(82,107,188,0.16) !important;
-        border-radius: 15px !important;
-        background: rgba(251,252,255,0.95) !important;
-        color: #233665 !important;
-        line-height: 1.65;
+        min-height: 285px !important;
+        line-height: 1.62;
+    }
+
+    .stButton > button {
+        min-height: 44px;
+        border-radius: 12px !important;
+        font-weight: 780 !important;
+        box-shadow: none !important;
     }
 
     .stButton > button[kind="primary"] {
         min-height: 48px;
+        color: #ffffff !important;
+        background: linear-gradient(105deg, #4774f7, #984ce9) !important;
         border: 0 !important;
-        border-radius: 14px !important;
-        color: white !important;
-        background: linear-gradient(105deg, #3e72ff, #9a48ef) !important;
-        box-shadow: 0 12px 25px rgba(83,77,230,0.25);
-        font-weight: 800;
-        transition: transform 0.18s ease, box-shadow 0.18s ease;
+        box-shadow: 0 11px 23px rgba(75, 74, 220, 0.21) !important;
     }
 
     .stButton > button[kind="primary"]:hover {
         transform: translateY(-1px);
-        box-shadow: 0 15px 30px rgba(83,77,230,0.32);
+        box-shadow: 0 14px 27px rgba(75, 74, 220, 0.27) !important;
+    }
+
+    .stButton > button[kind="secondary"],
+    .stButton > button:not([kind="primary"]) {
+        color: #435a94 !important;
+        background: #f7f9ff !important;
+        border: 1px solid #dce3f3 !important;
+    }
+
+    .stButton > button[kind="secondary"]:hover,
+    .stButton > button:not([kind="primary"]):hover {
+        color: #334a86 !important;
+        background: #eef2ff !important;
+        border-color: #c8d2ef !important;
     }
 
     .stDownloadButton > button {
         min-height: 42px;
-        border: 1px solid rgba(77,103,192,0.15) !important;
-        border-radius: 12px !important;
-        color: #29437f !important;
-        background: rgba(249,250,255,0.98) !important;
-        font-weight: 750;
+        color: #354d88 !important;
+        background: #f8f9fe !important;
+        border: 1px solid #dce3f3 !important;
+        border-radius: 11px !important;
+        font-weight: 750 !important;
+        box-shadow: none !important;
+    }
+
+    .stDownloadButton > button:hover {
+        background: #eef2ff !important;
+        border-color: #c7d1ef !important;
     }
 
     [data-testid="stImage"] img {
-        border-radius: 15px;
-        box-shadow: 0 12px 35px rgba(42,55,105,0.14);
+        border-radius: 14px;
+        box-shadow: 0 12px 31px rgba(41, 55, 104, 0.12);
     }
 
     .preview-placeholder {
@@ -3953,128 +4065,106 @@ st.markdown(
         display: grid;
         place-items: center;
         min-height: 560px;
-        padding: 32px;
+        padding: 28px;
         overflow: hidden;
-        border: 1px solid rgba(89,111,190,0.13);
-        border-radius: 17px;
+        border: 1px solid #e2e7f1;
+        border-radius: 15px;
         background:
-            linear-gradient(90deg, transparent 0 10.8%, rgba(229,106,120,0.34) 10.8% 11%, transparent 11%),
+            linear-gradient(90deg, transparent 0 10.8%, rgba(222,107,119,0.30) 10.8% 11%, transparent 11%),
             repeating-linear-gradient(
                 180deg,
                 #faf8ef 0,
-                #faf8ef 34px,
-                rgba(112,147,213,0.28) 35px,
-                #faf8ef 36px
+                #faf8ef 33px,
+                rgba(108,144,211,0.26) 34px,
+                #faf8ef 35px
             );
     }
 
-    .preview-placeholder::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at 80% 12%, rgba(144,87,237,0.08), transparent 30%);
-        pointer-events: none;
-    }
-
-    .preview-empty-content {
-        position: relative;
-        z-index: 1;
-        max-width: 340px;
-        padding: 22px 25px;
+    .preview-empty {
+        max-width: 325px;
+        padding: 20px 22px;
         border: 1px solid rgba(88,108,180,0.12);
-        border-radius: 17px;
-        background: rgba(255,255,255,0.82);
-        box-shadow: 0 16px 40px rgba(54,72,126,0.10);
+        border-radius: 15px;
+        background: rgba(255,255,255,0.88);
+        box-shadow: 0 13px 34px rgba(49,65,116,0.09);
         text-align: center;
     }
 
     .preview-empty-icon {
-        margin-bottom: 9px;
-        font-size: 38px;
+        margin-bottom: 8px;
+        font-size: 35px;
     }
 
     .preview-empty-title {
-        color: #1a3168;
-        font-size: 17px;
+        color: #20386e;
+        font-size: 16px;
         font-weight: 850;
     }
 
     .preview-empty-copy {
         margin-top: 6px;
-        color: #7c88a6;
-        font-size: 13px;
+        color: #7f8aa7;
+        font-size: 12px;
         line-height: 1.55;
     }
 
-    .result-summary {
+    .result-bar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin: 6px 0 12px;
-        padding: 10px 12px;
-        border-radius: 13px;
-        color: #2d477f;
-        background: linear-gradient(90deg, rgba(68,113,255,0.08), rgba(155,73,239,0.07));
-        font-size: 13px;
-        font-weight: 700;
-    }
-
-    .footer-banner {
-        display: flex;
-        justify-content: center;
-        margin-top: 24px;
-        padding: 15px 20px;
-        border-radius: 17px;
-        color: white;
-        background: linear-gradient(105deg, #3773ff, #a343ed);
-        box-shadow: 0 14px 32px rgba(79,73,221,0.20);
+        margin-bottom: 11px;
+        padding: 9px 12px;
+        border-radius: 11px;
+        color: #354e88;
+        background: linear-gradient(90deg, rgba(76,113,244,0.08), rgba(148,79,230,0.07));
+        font-size: 12px;
         font-weight: 800;
-        letter-spacing: 0.03em;
     }
 
-    @media (max-width: 980px) {
-        .hero-shell {
-            align-items: flex-start;
-            flex-direction: column;
-        }
-
-        .hero-actions {
-            justify-content: flex-start;
-        }
-
-        .feature-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .preview-placeholder {
-            min-height: 410px;
-        }
+    .footer-note {
+        margin-top: 20px;
+        padding: 13px 18px;
+        border-radius: 15px;
+        color: #ffffff;
+        background: linear-gradient(105deg, #4774f7, #984ce9);
+        box-shadow: 0 12px 28px rgba(74,72,211,0.18);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 800;
     }
 
-    @media (max-width: 620px) {
-        .block-container {
-            padding-left: 0.8rem;
-            padding-right: 0.8rem;
-        }
-
-        .feature-grid {
+    @media (max-width: 1050px) {
+        .steps-row {
             grid-template-columns: 1fr;
         }
 
+        .hero-tip {
+            display: none;
+        }
+
+        .preview-placeholder {
+            min-height: 420px;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .block-container {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+
         .hero-shell {
-            padding: 18px;
-            border-radius: 18px;
+            padding: 17px;
         }
 
-        .hero-actions {
-            width: 100%;
+        .hero-logo {
+            width: 46px;
+            height: 46px;
         }
 
-        .hero-chip,
-        .hero-cta {
-            flex: 1;
-            text-align: center;
+        .hero-title {
+            font-size: 26px;
         }
     }
     </style>
@@ -4086,11 +4176,8 @@ st.markdown(
 font_files = get_font_files()
 
 if not font_files:
-    st.error(
-        "没有找到字体。请上传一个支持俄语的 .ttf 或 .otf 手写字体。"
-    )
+    st.error("没有找到字体。请上传支持俄语的 .ttf 或 .otf 手写字体。")
     st.code(
-        "推荐结构：\n"
         "app.py\n"
         "fonts/\n"
         "    BadScript-Regular.ttf"
@@ -4099,7 +4186,7 @@ if not font_files:
 
 
 # ============================================================
-# 品牌头部
+# 页面头部
 # ============================================================
 st.markdown(
     """
@@ -4108,55 +4195,44 @@ st.markdown(
             <div class="hero-logo">✒</div>
             <div>
                 <h1 class="hero-title">手写生成器</h1>
-                <div class="hero-tagline">
-                    一键将 PDF / Word / TXT 转为自然、真实的手写图片
+                <div class="hero-subtitle">
+                    将 PDF、Word、TXT 或俄语文字转换为自然手写图片
                 </div>
             </div>
         </div>
-        <div class="hero-actions">
-            <div class="hero-chip">支持俄语手写 · 多种纸张</div>
-            <a class="hero-cta" href="#workspace">✦ 立即开始</a>
-        </div>
+        <div class="hero-tip">支持多种笔迹、涂改与真实纸张效果</div>
     </div>
 
-    <div class="feature-grid">
-        <div class="feature-card">
-            <div class="feature-icon">▤</div>
+    <div class="steps-row">
+        <div class="step-card">
+            <div class="step-number">1</div>
             <div>
-                <div class="feature-title">支持 PDF / Word / TXT</div>
-                <div class="feature-copy">自动提取文字，保留段落结构</div>
+                <div class="step-title">输入内容</div>
+                <div class="step-copy">粘贴文字或上传文档</div>
             </div>
         </div>
-        <div class="feature-card">
-            <div class="feature-icon">✎</div>
+        <div class="step-card">
+            <div class="step-number">2</div>
             <div>
-                <div class="feature-title">多种真实笔迹</div>
-                <div class="feature-copy">钢笔、圆珠笔、中性笔与铅笔</div>
+                <div class="step-title">选择风格</div>
+                <div class="step-copy">在左侧调整字体与纸张</div>
             </div>
         </div>
-        <div class="feature-card">
-            <div class="feature-icon">⌁</div>
+        <div class="step-card">
+            <div class="step-number">3</div>
             <div>
-                <div class="feature-title">自然笔误与涂改</div>
-                <div class="feature-copy">局部改错、叠写、规整或乱涂</div>
-            </div>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">⇩</div>
-            <div>
-                <div class="feature-title">高清导出</div>
-                <div class="feature-copy">下载 PNG、ZIP 或多页 PDF</div>
+                <div class="step-title">生成并下载</div>
+                <div class="step-copy">预览后导出 PNG 或 PDF</div>
             </div>
         </div>
     </div>
-    <div id="workspace"></div>
     """,
     unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# 侧边栏：手写设置
+# 侧边栏设置
 # ============================================================
 with st.sidebar:
     st.markdown(
@@ -4164,8 +4240,8 @@ with st.sidebar:
         <div class="sidebar-brand">
             <div class="sidebar-logo">✒</div>
             <div>
-                <div class="sidebar-brand-title">手写设置</div>
-                <div class="sidebar-brand-subtitle">调整笔迹、涂改与纸张风格</div>
+                <div class="sidebar-title">手写设置</div>
+                <div class="sidebar-copy">常用设置在上方，高级设置可展开</div>
             </div>
         </div>
         """,
@@ -4173,14 +4249,14 @@ with st.sidebar:
     )
 
     st.markdown(
-        '<div class="sidebar-section-title">快速风格</div>',
+        '<div class="sidebar-label">常用设置</div>',
         unsafe_allow_html=True,
     )
 
     preset_name = st.selectbox(
         "快速预设",
         options=list(PRESETS.keys()),
-        help="先选一个最接近的效果，再微调。",
+        help="先选择一个接近目标的预设，再微调。",
     )
 
     preset = PRESETS[preset_name]
@@ -4189,7 +4265,7 @@ with st.sidebar:
     selected_font_name = st.selectbox(
         "手写字体",
         options=list(font_files.keys()),
-        help="推荐 Marck Script 或 Bad Script。",
+        help="俄语手写推荐 Marck Script 或 Bad Script。",
         key=f"font_{preset_key}",
     )
 
@@ -4207,13 +4283,8 @@ with st.sidebar:
         max_value=1.60,
         value=1.00,
         step=0.05,
-        help="1.00 为默认；数值越大越粗，越小越细。",
+        help="1.00 为默认值。",
         key=f"font_weight_{preset_key}",
-    )
-
-    st.markdown(
-        '<div class="sidebar-section-title">笔具与涂改</div>',
-        unsafe_allow_html=True,
     )
 
     pen_options = ["中性笔", "钢笔", "圆珠笔", "铅笔"]
@@ -4238,51 +4309,43 @@ with st.sidebar:
         key=f"ink_{preset_key}",
     )
 
-    correction_level = st.select_slider(
-        "笔误与涂改",
-        options=[0, 1, 2, 3],
-        value=int(preset["correction_level"]),
-        help=(
-            "0=关闭，1=少量，2=自然，3=较多；"
-            "随机使用局部改错、叠写、斜线、乱涂与补写。"
-        ),
-        key=f"correction_{preset_key}",
-    )
+    with st.expander("笔误与涂改", expanded=False):
+        correction_level = st.select_slider(
+            "涂改数量",
+            options=[0, 1, 2, 3],
+            value=int(preset["correction_level"]),
+            help="0=关闭，1=少量，2=自然，3=较多。",
+            key=f"correction_{preset_key}",
+        )
 
-    correction_style_options = [
-        "混合",
-        "局部改错型",
-        "规整型",
-        "乱涂型",
-    ]
+        correction_style_options = [
+            "混合",
+            "局部改错型",
+            "规整型",
+            "乱涂型",
+        ]
 
-    correction_style = st.selectbox(
-        "涂改风格",
-        correction_style_options,
-        index=option_index(
+        correction_style = st.selectbox(
+            "涂改风格",
             correction_style_options,
-            preset.get(
-                "correction_style",
-                "混合",
+            index=option_index(
+                correction_style_options,
+                preset.get(
+                    "correction_style",
+                    "混合",
+                ),
             ),
-        ),
-        help=(
-            "局部改错型适合作业；规整型偏整齐划改；"
-            "乱涂型更像课堂草稿。"
-        ),
-        key=f"correction_style_{preset_key}",
-    )
+            key=f"correction_style_{preset_key}",
+        )
 
-    header_enabled = st.checkbox(
-        "显示手写页眉",
-        value=True,
-        key=f"header_enabled_{preset_key}",
-    )
+        teacher_marks = st.select_slider(
+            "老师红笔批改",
+            options=[0, 1, 2, 3],
+            value=int(preset["teacher_marks"]),
+            key=f"teacher_{preset_key}",
+        )
 
-    with st.expander(
-        "纸张与高级设置",
-        expanded=False,
-    ):
+    with st.expander("纸张效果", expanded=False):
         paper_options = [
             "俄语作业本",
             "普通横线本",
@@ -4298,14 +4361,6 @@ with st.sidebar:
                 preset["paper_type"],
             ),
             key=f"paper_{preset_key}",
-        )
-
-        line_spacing = st.slider(
-            "横线间距",
-            min_value=4,
-            max_value=24,
-            value=int(preset["line_spacing"]),
-            key=f"line_spacing_{preset_key}",
         )
 
         paper_age = st.slider(
@@ -4328,16 +4383,10 @@ with st.sidebar:
                 )
             ),
             step=0.05,
-            help="增加折痕、高光和阴影。",
             key=f"wrinkle_{preset_key}",
         )
 
-        photo_options = [
-            "无",
-            "扫描件",
-            "手机拍照",
-        ]
-
+        photo_options = ["无", "扫描件", "手机拍照"]
         photo_effect = st.selectbox(
             "导出外观",
             photo_options,
@@ -4348,13 +4397,28 @@ with st.sidebar:
             key=f"photo_{preset_key}",
         )
 
+    with st.expander("排版与页眉", expanded=False):
+        line_spacing = st.slider(
+            "横线间距",
+            min_value=4,
+            max_value=24,
+            value=int(preset["line_spacing"]),
+            key=f"line_spacing_{preset_key}",
+        )
+
+        word_spacing = st.slider(
+            "单词间距",
+            min_value=-8,
+            max_value=12,
+            value=int(preset["word_spacing"]),
+            key=f"word_spacing_{preset_key}",
+        )
+
         texture_strength = st.slider(
             "笔迹纹理",
             min_value=0.0,
             max_value=1.0,
-            value=float(
-                preset["texture_strength"]
-            ),
+            value=float(preset["texture_strength"]),
             step=0.05,
             key=f"texture_{preset_key}",
         )
@@ -4376,18 +4440,6 @@ with st.sidebar:
             key=f"slant_{preset_key}",
         )
 
-        connection_strength = float(
-            preset["connection_strength"]
-        )
-
-        word_spacing = st.slider(
-            "单词间距",
-            min_value=-8,
-            max_value=12,
-            value=int(preset["word_spacing"]),
-            key=f"word_spacing_{preset_key}",
-        )
-
         baseline_wave = st.slider(
             "基线起伏",
             min_value=0.0,
@@ -4397,13 +4449,10 @@ with st.sidebar:
             key=f"baseline_{preset_key}",
         )
 
-        flourish_level = 0
-
-        teacher_marks = st.select_slider(
-            "老师红笔批改",
-            options=[0, 1, 2, 3],
-            value=int(preset["teacher_marks"]),
-            key=f"teacher_{preset_key}",
+        header_enabled = st.checkbox(
+            "显示手写页眉",
+            value=True,
+            key=f"header_enabled_{preset_key}",
         )
 
         header_date = st.text_input(
@@ -4419,7 +4468,7 @@ with st.sidebar:
         )
 
         show_page_number = st.checkbox(
-            "显示手写页码",
+            "显示页码",
             value=False,
             key=f"page_number_{preset_key}",
         )
@@ -4433,44 +4482,45 @@ with st.sidebar:
             key=f"seed_{preset_key}",
         )
 
-    # 高级设置使用预设默认值
+    # 已移除用户不需要的连笔滑块，内部沿用预设值
+    connection_strength = float(
+        preset["connection_strength"]
+    )
+    flourish_level = 0
+
+    # 折叠区域仍会执行，但以下默认值可防止不同 Streamlit 版本产生未定义变量
+    if "correction_level" not in locals():
+        correction_level = int(preset["correction_level"])
+    if "correction_style" not in locals():
+        correction_style = str(
+            preset.get("correction_style", "混合")
+        )
+    if "teacher_marks" not in locals():
+        teacher_marks = int(preset["teacher_marks"])
     if "paper_type" not in locals():
-        paper_type = preset["paper_type"]
-    if "line_spacing" not in locals():
-        line_spacing = int(preset["line_spacing"])
+        paper_type = str(preset["paper_type"])
     if "paper_age" not in locals():
         paper_age = float(preset["paper_age"])
     if "wrinkle_strength" not in locals():
         wrinkle_strength = float(
-            preset.get(
-                "wrinkle_strength",
-                0.0,
-            )
+            preset.get("wrinkle_strength", 0.0)
         )
     if "photo_effect" not in locals():
-        photo_effect = preset["photo_effect"]
+        photo_effect = str(preset["photo_effect"])
+    if "line_spacing" not in locals():
+        line_spacing = int(preset["line_spacing"])
+    if "word_spacing" not in locals():
+        word_spacing = int(preset["word_spacing"])
     if "texture_strength" not in locals():
-        texture_strength = float(
-            preset["texture_strength"]
-        )
+        texture_strength = float(preset["texture_strength"])
     if "randomness" not in locals():
         randomness = int(preset["randomness"])
     if "slant" not in locals():
         slant = float(preset["slant"])
-    if "connection_strength" not in locals():
-        connection_strength = float(
-            preset["connection_strength"]
-        )
-    if "word_spacing" not in locals():
-        word_spacing = int(preset["word_spacing"])
     if "baseline_wave" not in locals():
         baseline_wave = float(preset["baseline_wave"])
-    if "flourish_level" not in locals():
-        flourish_level = 0
-    if "teacher_marks" not in locals():
-        teacher_marks = int(
-            preset["teacher_marks"]
-        )
+    if "header_enabled" not in locals():
+        header_enabled = True
     if "header_date" not in locals():
         header_date = "15.01"
     if "header_lesson" not in locals():
@@ -4482,7 +4532,7 @@ with st.sidebar:
 
 
 # ============================================================
-# 主工作区
+# 输入和预览
 # ============================================================
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = (
@@ -4494,21 +4544,24 @@ if "editor_text" not in st.session_state:
     )
 
 
-input_column, preview_column = st.columns(
-    [0.39, 0.61],
+left_column, right_column = st.columns(
+    [0.40, 0.60],
     gap="large",
 )
 
-with input_column:
+
+with left_column:
     with st.container(border=True):
         st.markdown(
             """
-            <div class="panel-heading">
+            <div class="panel-header">
                 <div>
-                    <div class="panel-kicker">CONTENT</div>
-                    <div class="panel-title">上传文档或输入文字</div>
+                    <div class="panel-title">1. 输入文档内容</div>
+                    <div class="panel-description">
+                        上传文件后仍可在文本框中检查和修改
+                    </div>
                 </div>
-                <div class="panel-badge">PDF · DOCX · TXT</div>
+                <div class="panel-chip">PDF · DOCX · TXT</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -4534,125 +4587,97 @@ with input_column:
                 != file_identity
             ):
                 try:
-                    extracted_text = (
-                        extract_uploaded_file(
-                            uploaded_file
-                        )
+                    extracted_text = extract_uploaded_file(
+                        uploaded_file
                     )
                     extracted_text = normalize_text(
                         extracted_text
                     )
 
                     if extracted_text:
-                        st.session_state[
-                            "editor_text"
-                        ] = extracted_text
-                        st.session_state[
-                            "last_uploaded_file"
-                        ] = file_identity
-                        st.success(
-                            "文字提取成功，可以继续编辑。"
-                        )
+                        st.session_state["editor_text"] = extracted_text
+                        st.session_state["last_uploaded_file"] = file_identity
+                        st.success("文档内容已提取，可以继续编辑。")
                     else:
                         st.warning(
-                            "没有提取到文字。扫描版 PDF "
-                            "暂时需要先转换为文字型 PDF。"
+                            "没有提取到文字。扫描版 PDF 暂时需要先转成文字型 PDF。"
                         )
 
                 except Exception as error:
-                    st.error(
-                        f"读取文件失败：{error}"
-                    )
+                    st.error(f"读取文件失败：{error}")
 
         text = st.text_area(
-            "俄语文字",
+            "文档内容",
             key="editor_text",
             height=300,
-            placeholder="在这里粘贴俄语文字……",
+            placeholder="在这里输入或粘贴俄语文字……",
         )
 
-        generate_clicked = st.button(
-            "✦ 生成手写图片",
-            type="primary",
-            use_container_width=True,
+        clear_column, generate_column = st.columns(
+            [0.32, 0.68],
+            gap="small",
         )
+
+        with clear_column:
+            clear_clicked = st.button(
+                "清空内容",
+                use_container_width=True,
+            )
+
+        with generate_column:
+            generate_clicked = st.button(
+                "✦ 生成手写图片",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if clear_clicked:
+            st.session_state["editor_text"] = ""
+            st.session_state.pop("last_uploaded_file", None)
+            st.rerun()
 
 
 if generate_clicked:
     if not text.strip():
-        st.warning("请先输入或上传俄语文字。")
+        st.warning("请先输入或上传文字。")
     else:
         settings = RenderSettings(
             font_path=str(
-                font_files[
-                    selected_font_name
-                ]
+                font_files[selected_font_name]
             ),
             font_size=font_size,
             line_spacing=int(line_spacing),
             paper_type=str(paper_type),
             paper_age=float(paper_age),
-            wrinkle_strength=float(
-                wrinkle_strength
-            ),
-            photo_effect=str(
-                photo_effect
-            ),
+            wrinkle_strength=float(wrinkle_strength),
+            photo_effect=str(photo_effect),
             ink_name=str(ink_name),
             pen_style=str(pen_style),
-            texture_strength=float(
-                texture_strength
-            ),
-            font_weight=float(
-                font_weight
-            ),
+            texture_strength=float(texture_strength),
+            font_weight=float(font_weight),
             randomness=int(randomness),
             seed=int(seed),
             slant=float(slant),
-            word_spacing=int(
-                word_spacing
-            ),
-            connection_strength=float(
-                connection_strength
-            ),
-            baseline_wave=float(
-                baseline_wave
-            ),
+            word_spacing=int(word_spacing),
+            connection_strength=float(connection_strength),
+            baseline_wave=float(baseline_wave),
             flourish_level=0,
-            correction_level=int(
-                correction_level
-            ),
-            correction_style=str(
-                correction_style
-            ),
-            teacher_marks=int(
-                teacher_marks
-            ),
-            header_enabled=bool(
-                header_enabled
-            ),
-            header_date=str(
-                header_date
-            ),
-            header_lesson=str(
-                header_lesson
-            ),
-            show_page_number=bool(
-                show_page_number
-            ),
+            correction_level=int(correction_level),
+            correction_style=str(correction_style),
+            teacher_marks=int(teacher_marks),
+            header_enabled=bool(header_enabled),
+            header_date=str(header_date),
+            header_lesson=str(header_lesson),
+            show_page_number=bool(show_page_number),
         )
 
         try:
-            with st.spinner(
-                "正在生成自然手写页面……"
-            ):
+            with st.spinner("正在生成手写页面……"):
                 pages = render_document(
                     text=text,
                     settings=settings,
                 )
-                save_result_to_session(
-                    pages
-                )
+                save_result_to_session(pages)
 
             st.toast(
                 f"生成成功，共 {len(pages)} 页。",
@@ -4661,50 +4686,44 @@ if generate_clicked:
 
         except OSError:
             st.error(
-                "字体无法打开。请确认字体有效，"
-                "并支持西里尔字母。"
+                "字体无法打开。请确认字体有效并支持西里尔字母。"
             )
-
         except MemoryError:
             st.error(
-                "文字太多，内存不足。"
-                "请减少文字后分批生成。"
+                "文字太多，内存不足。请减少文字后分批生成。"
             )
-
         except Exception as error:
             st.exception(error)
 
 
-result = st.session_state.get(
-    "generated_result"
-)
+result = st.session_state.get("generated_result")
 
 
-with preview_column:
+with right_column:
     with st.container(border=True):
         st.markdown(
             """
-            <div class="panel-heading">
+            <div class="panel-header">
                 <div>
-                    <div class="panel-kicker">LIVE PREVIEW</div>
-                    <div class="panel-title">预览效果</div>
+                    <div class="panel-title">2. 预览与下载</div>
+                    <div class="panel-description">
+                        生成后可下载单页图片、全部图片或 PDF
+                    </div>
                 </div>
-                <div class="panel-badge">高清手写页面</div>
+                <div class="panel-chip">实时预览</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         if result:
-            preview_pages = result[
-                "preview_pages"
-            ]
+            preview_pages = result["preview_pages"]
 
             st.markdown(
                 f"""
-                <div class="result-summary">
-                    <span>✓ 已生成手写文档</span>
-                    <span>共 {result["page_count"]} 页</span>
+                <div class="result-bar">
+                    <span>✓ 手写文档已生成</span>
+                    <span>{result["page_count"]} 页</span>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -4715,43 +4734,34 @@ with preview_column:
                 use_container_width=True,
             )
 
-            download_column_1, download_column_2, download_column_3 = st.columns(
+            download_1, download_2, download_3 = st.columns(
                 3,
                 gap="small",
             )
 
-            with download_column_1:
+            with download_1:
                 st.download_button(
                     "第一页 PNG",
                     data=result["first_png"],
-                    file_name=(
-                        "russian_handwriting_"
-                        "page_001.png"
-                    ),
+                    file_name="handwriting_page_001.png",
                     mime="image/png",
                     use_container_width=True,
                 )
 
-            with download_column_2:
+            with download_2:
                 st.download_button(
-                    "全部 PNG",
+                    "全部图片 ZIP",
                     data=result["zip_bytes"],
-                    file_name=(
-                        "russian_handwriting_"
-                        "pages.zip"
-                    ),
+                    file_name="handwriting_pages.zip",
                     mime="application/zip",
                     use_container_width=True,
                 )
 
-            with download_column_3:
+            with download_3:
                 st.download_button(
                     "多页 PDF",
                     data=result["pdf_bytes"],
-                    file_name=(
-                        "russian_handwriting_"
-                        "document.pdf"
-                    ),
+                    file_name="handwriting_document.pdf",
                     mime="application/pdf",
                     use_container_width=True,
                 )
@@ -4760,14 +4770,13 @@ with preview_column:
             st.markdown(
                 """
                 <div class="preview-placeholder">
-                    <div class="preview-empty-content">
+                    <div class="preview-empty">
                         <div class="preview-empty-icon">✍️</div>
                         <div class="preview-empty-title">
-                            你的手写页面将在这里出现
+                            生成结果将在这里显示
                         </div>
                         <div class="preview-empty-copy">
-                            在左侧上传文档或输入俄语文字，
-                            调整侧边栏中的笔迹和纸张设置，
+                            输入文字并选择左侧的手写风格，
                             然后点击“生成手写图片”。
                         </div>
                     </div>
@@ -4777,13 +4786,8 @@ with preview_column:
             )
 
 
-if result and len(
-    result["preview_pages"]
-) > 1:
-    with st.expander(
-        "查看其他预览页面",
-        expanded=False,
-    ):
+if result and len(result["preview_pages"]) > 1:
+    with st.expander("查看其余预览页面", expanded=False):
         for page_index, page in enumerate(
             result["preview_pages"][1:],
             start=2,
@@ -4797,8 +4801,8 @@ if result and len(
 
 st.markdown(
     """
-    <div class="footer-banner">
-        ✦ 手写生成器 · 让每一份文字更自然、更有温度
+    <div class="footer-note">
+        ✦ 手写生成器 · 输入内容 → 选择风格 → 生成下载
     </div>
     """,
     unsafe_allow_html=True,
