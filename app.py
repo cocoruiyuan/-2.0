@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -3629,7 +3630,7 @@ st.markdown(
         color: var(--ink);
     }
 
-    [data-testid="stHeader"],
+    /* 保留 stHeader：侧边栏收起后的重新展开按钮依赖它或其相邻容器。 */
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
     [data-testid="stStatusWidget"],
@@ -3639,6 +3640,23 @@ st.markdown(
         visibility: hidden !important;
     }
 
+    [data-testid="stHeader"] {
+        display: block !important;
+        visibility: visible !important;
+        height: 3.25rem !important;
+        min-height: 3.25rem !important;
+        background: transparent !important;
+        pointer-events: none !important;
+        z-index: 99990 !important;
+    }
+
+    /* Header 中只有侧边栏开关需要接收点击。 */
+    [data-testid="stHeader"] button,
+    [data-testid="stHeader"] [role="button"],
+    [data-testid="stHeader"] [data-testid*="Sidebar"] {
+        pointer-events: auto !important;
+    }
+
     .block-container {
         max-width: 1510px;
         padding-top: 1.15rem;
@@ -3646,11 +3664,53 @@ st.markdown(
     }
 
     section[data-testid="stSidebar"] {
-        width: 334px !important;
-        min-width: 334px !important;
-        background: rgba(252, 253, 255, 0.98);
+        width: min(334px, 88vw) !important;
+        min-width: 0 !important;
+        max-width: 88vw !important;
+        background: rgba(252, 253, 255, 0.985);
         border-right: 1px solid rgba(78, 102, 177, 0.12);
         box-shadow: 10px 0 34px rgba(44, 62, 119, 0.05);
+        transition:
+            transform 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+            width 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+            box-shadow 0.24s ease,
+            opacity 0.22s ease !important;
+        will-change: transform;
+        overflow: visible !important;
+    }
+
+    section[data-testid="stSidebar"][aria-expanded="true"] {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        opacity: 0.98 !important;
+        box-shadow: none !important;
+        pointer-events: none !important;
+    }
+
+    /* 侧边栏内容保持可滚动，避免长设置卡住折叠按钮。 */
+    [data-testid="stSidebarUserContent"] {
+        height: 100vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding-top: 0.85rem !important;
+        scrollbar-width: thin;
+        scrollbar-color: #c7d2ef transparent;
+    }
+
+    [data-testid="stSidebarUserContent"]::-webkit-scrollbar {
+        width: 7px;
+    }
+
+    [data-testid="stSidebarUserContent"]::-webkit-scrollbar-thumb {
+        background: #c7d2ef;
+        border-radius: 999px;
+    }
+
+    [data-testid="stSidebarUserContent"]::-webkit-scrollbar-track {
+        background: transparent;
     }
 
     section[data-testid="stSidebar"] > div {
@@ -4903,6 +4963,185 @@ st.markdown(
         outline: 0 !important;
         outline-width: 0 !important;
         outline-color: transparent !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# 侧边栏开关修复：兼容多个 Streamlit 版本
+# ============================================================
+st.markdown(
+    """
+    <style>
+    /* Streamlit 新旧版本可能使用不同 data-testid。 */
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 1000000 !important;
+        transition:
+            transform 0.18s ease,
+            opacity 0.18s ease,
+            background-color 0.18s ease,
+            box-shadow 0.18s ease !important;
+    }
+
+    /* 展开状态下，按钮位于侧边栏右上角。 */
+    section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarCollapsedControl"],
+    section[data-testid="stSidebar"] [data-testid="stExpandSidebarButton"],
+    section[data-testid="stSidebar"] [data-testid="collapsedControl"] {
+        position: absolute !important;
+        top: 0.72rem !important;
+        right: 0.68rem !important;
+        left: auto !important;
+        margin: 0 !important;
+    }
+
+    /* 收起状态下的重新展开按钮。 */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="collapsedControl"] {
+        position: fixed !important;
+        top: 0.72rem !important;
+        left: 0.72rem !important;
+        right: auto !important;
+        margin: 0 !important;
+    }
+
+    /* 新版本可能对展开和收起共用 stSidebarCollapseButton。 */
+    body:has(section[data-testid="stSidebar"][aria-expanded="false"])
+    [data-testid="stSidebarCollapseButton"] {
+        position: fixed !important;
+        top: 0.72rem !important;
+        left: 0.72rem !important;
+        right: auto !important;
+        margin: 0 !important;
+        pointer-events: auto !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"] button,
+    [data-testid="stSidebarCollapsedControl"] button,
+    [data-testid="stExpandSidebarButton"] button,
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"][role="button"],
+    [data-testid="stSidebarCollapsedControl"][role="button"],
+    [data-testid="stExpandSidebarButton"][role="button"],
+    [data-testid="collapsedControl"][role="button"] {
+        display: grid !important;
+        place-items: center !important;
+        width: 42px !important;
+        min-width: 42px !important;
+        height: 42px !important;
+        min-height: 42px !important;
+        padding: 0 !important;
+        color: #4f64c8 !important;
+        background: linear-gradient(
+            145deg,
+            rgba(255, 255, 255, 0.98),
+            rgba(237, 242, 255, 0.98)
+        ) !important;
+        border: 1px solid #d4def5 !important;
+        border-radius: 13px !important;
+        outline: none !important;
+        box-shadow: 0 7px 20px rgba(50, 67, 139, 0.14) !important;
+        cursor: pointer !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"]:hover,
+    [data-testid="stSidebarCollapsedControl"]:hover,
+    [data-testid="stExpandSidebarButton"]:hover,
+    [data-testid="collapsedControl"]:hover {
+        transform: translateY(-1px) scale(1.025) !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"] button:hover,
+    [data-testid="stSidebarCollapsedControl"] button:hover,
+    [data-testid="stExpandSidebarButton"] button:hover,
+    [data-testid="collapsedControl"] button:hover {
+        color: #ffffff !important;
+        background: linear-gradient(
+            135deg,
+            #5575f5,
+            #8b57e9
+        ) !important;
+        border-color: transparent !important;
+        box-shadow: 0 10px 24px rgba(72, 75, 211, 0.24) !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"] svg,
+    [data-testid="stSidebarCollapsedControl"] svg,
+    [data-testid="stExpandSidebarButton"] svg,
+    [data-testid="collapsedControl"] svg {
+        width: 21px !important;
+        height: 21px !important;
+        color: currentColor !important;
+        fill: currentColor !important;
+        stroke: currentColor !important;
+        background: transparent !important;
+    }
+
+    /* 防止其他全局规则再次隐藏按钮。 */
+    [data-testid="stHeader"]
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stHeader"]
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stHeader"]
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stHeader"]
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    /* 主内容在侧边栏状态变化时更平滑。 */
+    [data-testid="stAppViewContainer"] > .main,
+    [data-testid="stMain"],
+    .main {
+        transition:
+            margin-left 0.30s cubic-bezier(0.22, 1, 0.36, 1),
+            width 0.30s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    }
+
+    /* 小屏幕：侧边栏作为浮层，不挤压内容。 */
+    @media (max-width: 768px) {
+        section[data-testid="stSidebar"] {
+            width: min(320px, 91vw) !important;
+            max-width: 91vw !important;
+            box-shadow: 14px 0 38px rgba(27, 42, 94, 0.17);
+        }
+
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="collapsedControl"],
+        body:has(section[data-testid="stSidebar"][aria-expanded="false"])
+        [data-testid="stSidebarCollapseButton"] {
+            top: 0.55rem !important;
+            left: 0.55rem !important;
+        }
+    }
+
+    /* 尊重用户的减少动画设置。 */
+    @media (prefers-reduced-motion: reduce) {
+        section[data-testid="stSidebar"],
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="collapsedControl"],
+        [data-testid="stAppViewContainer"] > .main,
+        [data-testid="stMain"],
+        .main {
+            transition: none !important;
+        }
     }
     </style>
     """,
