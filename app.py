@@ -48,6 +48,7 @@ class RenderSettings:
     ink_name: str
     pen_style: str
     texture_strength: float
+    font_weight: float
     randomness: int
     seed: int
     slant: float
@@ -505,6 +506,72 @@ def apply_pen_texture(
     )
 
     return alpha, color, line_alpha
+
+
+def cleanup_connection_hairlines(
+    alpha_mask: Image.Image,
+) -> Image.Image:
+    """
+    清理字母连接处容易出现的细小毛刺或杂线。
+    不会做人工连线，只是柔和地清理极细伪影。
+    """
+    cleaned = alpha_mask.filter(ImageFilter.MedianFilter(3))
+    cleaned = cleaned.point(
+        lambda pixel: 0 if pixel < 10 else pixel
+    )
+    return cleaned
+
+
+def adjust_stroke_weight(
+    alpha_mask: Image.Image,
+    font_weight: float,
+) -> Image.Image:
+    """
+    调整字体粗细。
+    1.0 为默认，>1 更粗，<1 更细。
+    """
+    if abs(font_weight - 1.0) < 0.001:
+        return alpha_mask
+
+    result = alpha_mask
+
+    if font_weight > 1.0:
+        remaining = font_weight - 1.0
+
+        while remaining > 0.001:
+            expanded = result.filter(
+                ImageFilter.MaxFilter(3)
+            )
+            blend_amount = min(0.82, remaining / 0.22)
+            result = Image.blend(
+                result,
+                expanded,
+                blend_amount,
+            )
+            remaining -= 0.22
+
+    else:
+        remaining = 1.0 - font_weight
+
+        while remaining > 0.001:
+            shrunk = result.filter(
+                ImageFilter.MinFilter(3)
+            )
+            blend_amount = min(0.75, remaining / 0.25)
+            result = Image.blend(
+                result,
+                shrunk,
+                blend_amount,
+            )
+            remaining -= 0.25
+
+    result = result.filter(
+        ImageFilter.GaussianBlur(radius=0.25)
+    ).point(
+        lambda pixel: 0 if pixel < 8 else pixel
+    )
+
+    return result
 
 
 # ============================================================
@@ -2045,6 +2112,14 @@ def render_word_image(
         rng,
     )
 
+    alpha_mask = cleanup_connection_hairlines(
+        alpha_mask
+    )
+    alpha_mask = adjust_stroke_weight(
+        alpha_mask,
+        settings.font_weight,
+    )
+
     word_image = Image.new(
         "RGBA",
         mask.size,
@@ -2318,6 +2393,14 @@ def render_cursive_line_image(
         mask,
         settings,
         rng,
+    )
+
+    alpha_mask = cleanup_connection_hairlines(
+        alpha_mask
+    )
+    alpha_mask = adjust_stroke_weight(
+        alpha_mask,
+        settings.font_weight,
     )
 
     line_image = Image.new(
@@ -2928,13 +3011,13 @@ def save_result_to_session(pages: list[Image.Image]) -> None:
 # Streamlit 页面
 # ============================================================
 st.set_page_config(
-    page_title="俄语手写图片生成器",
+    page_title="手写生成器",
     page_icon="✍️",
     layout="wide",
 )
 
-st.title("✍️ 俄语学生作业本生成器")
-st.caption("学生作业本自然改错版：笔误更像真实学生作业，涂改方式更随机、更自然。")
+st.title("✍️ 手写生成器")
+st.caption("简化版：更干净的连笔、更自然的笔误，并支持调节字体粗细。")
 
 font_files = get_font_files()
 
@@ -2950,12 +3033,12 @@ if not font_files:
 
 
 with st.sidebar:
-    st.header("学生作业本设置")
+    st.header("基础设置")
 
     preset_name = st.selectbox(
         "快速预设",
         options=list(PRESETS.keys()),
-        help="先选择最接近的效果，再微调下面参数。",
+        help="先选一个最接近的效果，再微调。",
     )
 
     preset = PRESETS[preset_name]
@@ -2964,10 +3047,7 @@ with st.sidebar:
     selected_font_name = st.selectbox(
         "手写字体",
         options=list(font_files.keys()),
-        help=(
-            "俄语连笔推荐 Marck Script 或 Bad Script。"
-            "真正的字母连接形状主要由字体决定。"
-        ),
+        help="推荐 Marck Script 或 Bad Script。",
         key=f"font_{preset_key}",
     )
 
@@ -2979,224 +3059,218 @@ with st.sidebar:
         key=f"font_size_{preset_key}",
     )
 
-    line_spacing = st.slider(
-        "横线间距",
-        min_value=4,
-        max_value=24,
-        value=int(preset["line_spacing"]),
-        key=f"line_spacing_{preset_key}",
-    )
-
-    paper_options = [
-        "俄语作业本",
-        "普通横线本",
-        "方格本",
-        "白纸",
-    ]
-
-    paper_type = st.selectbox(
-        "本子类型",
-        paper_options,
-        index=option_index(
-            paper_options,
-            preset["paper_type"],
-        ),
-        key=f"paper_{preset_key}",
-    )
-
-    paper_age = st.slider(
-        "纸张旧化",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(preset["paper_age"]),
+    font_weight = st.slider(
+        "字体粗细",
+        min_value=0.75,
+        max_value=1.60,
+        value=1.00,
         step=0.05,
-        key=f"paper_age_{preset_key}",
+        help="1.00 为默认；数值越大越粗，越小越细。",
+        key=f"font_weight_{preset_key}",
     )
 
-    photo_options = [
-        "无",
-        "扫描件",
-        "手机拍照",
-    ]
-
-    photo_effect = st.selectbox(
-        "导出外观",
-        photo_options,
-        index=option_index(
-            photo_options,
-            preset["photo_effect"],
-        ),
-        key=f"photo_{preset_key}",
-    )
-
-    ink_options = [
-        "黑色",
-        "蓝色",
-    ]
-
-    ink_name = st.selectbox(
-        "墨水颜色",
-        ink_options,
-        index=option_index(
-            ink_options,
-            preset["ink_name"],
-        ),
-        key=f"ink_{preset_key}",
-    )
-
-    pen_options = [
-        "中性笔",
-        "钢笔",
-        "圆珠笔",
-        "铅笔",
-    ]
-
+    pen_options = ["中性笔", "钢笔", "圆珠笔", "铅笔"]
     pen_style = st.selectbox(
         "书写工具",
         pen_options,
-        index=option_index(
-            pen_options,
-            preset["pen_style"],
-        ),
+        index=option_index(pen_options, preset["pen_style"]),
         key=f"pen_{preset_key}",
     )
 
-    texture_strength = st.slider(
-        "笔迹纹理",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(
-            preset["texture_strength"]
-        ),
-        step=0.05,
-        help=(
-            "铅笔建议 0.55～0.80；"
-            "圆珠笔建议 0.30～0.50；"
-            "钢笔建议 0.15～0.35。"
-        ),
-        key=f"texture_{preset_key}",
-    )
-
-    randomness = st.slider(
-        "自然随机程度",
-        min_value=0,
-        max_value=4,
-        value=int(preset["randomness"]),
-        help="整齐作业建议 1，课堂笔记建议 2～3。",
-        key=f"random_{preset_key}",
-    )
-
-    slant = st.slider(
-        "右倾程度",
-        min_value=0.00,
-        max_value=0.20,
-        value=float(preset["slant"]),
-        step=0.01,
-        key=f"slant_{preset_key}",
-    )
-
-    connection_strength = st.slider(
-        "连笔流畅度",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(
-            preset["connection_strength"]
-        ),
-        step=0.05,
-        help=(
-            "不会人工画字符连接线，只调整字体连字、"
-            "整体压缩和连写感觉。"
-        ),
-        key=f"connection_{preset_key}",
-    )
-
-    word_spacing = st.slider(
-        "单词间距",
-        min_value=-8,
-        max_value=12,
-        value=int(preset["word_spacing"]),
-        help="单词应保持可辨认，通常使用 -2～1。",
-        key=f"word_spacing_{preset_key}",
-    )
-
-    baseline_wave = st.slider(
-        "基线起伏",
-        min_value=0.0,
-        max_value=5.0,
-        value=float(
-            preset["baseline_wave"]
-        ),
-        step=0.2,
-        key=f"baseline_{preset_key}",
-    )
-
-    flourish_level = st.select_slider(
-        "句尾收笔",
-        options=[0, 1, 2, 3],
-        value=int(
-            preset["flourish_level"]
-        ),
-        key=f"flourish_{preset_key}",
+    ink_options = ["黑色", "蓝色"]
+    ink_name = st.selectbox(
+        "墨水颜色",
+        ink_options,
+        index=option_index(ink_options, preset["ink_name"]),
+        key=f"ink_{preset_key}",
     )
 
     correction_level = st.select_slider(
-        "学生涂改痕迹",
+        "笔误与涂改",
         options=[0, 1, 2, 3],
-        value=int(
-            preset["correction_level"]
-        ),
-        help=(
-            "会随机出现更自然的学生笔误："
-            "局部划掉、整词重写、插入补写、"
-            "快速涂抹和重叠改写。"
-        ),
+        value=int(preset["correction_level"]),
+        help="0=关闭，1=少量，2=自然，3=较多。",
         key=f"correction_{preset_key}",
     )
 
-    teacher_marks = st.select_slider(
-        "老师红笔批改",
-        options=[0, 1, 2, 3],
-        value=int(
-            preset["teacher_marks"]
-        ),
-        key=f"teacher_{preset_key}",
-    )
-
-    st.divider()
-    st.subheader("页眉和页码")
-
     header_enabled = st.checkbox(
-        "显示手写页眉",
+        "显示页眉",
         value=True,
         key=f"header_enabled_{preset_key}",
     )
 
-    header_date = st.text_input(
-        "日期",
-        value="15.01",
-        key=f"header_date_{preset_key}",
-    )
+    with st.expander("更多设置（可选）", expanded=False):
+        paper_options = [
+            "俄语作业本",
+            "普通横线本",
+            "方格本",
+            "白纸",
+        ]
+        paper_type = st.selectbox(
+            "本子类型",
+            paper_options,
+            index=option_index(
+                paper_options,
+                preset["paper_type"],
+            ),
+            key=f"paper_{preset_key}",
+        )
 
-    header_lesson = st.text_input(
-        "课题",
-        value="Урок русского языка",
-        key=f"header_lesson_{preset_key}",
-    )
+        line_spacing = st.slider(
+            "横线间距",
+            min_value=4,
+            max_value=24,
+            value=int(preset["line_spacing"]),
+            key=f"line_spacing_{preset_key}",
+        )
 
-    show_page_number = st.checkbox(
-        "显示手写页码",
-        value=False,
-        key=f"page_number_{preset_key}",
-    )
+        paper_age = st.slider(
+            "纸张旧化",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(preset["paper_age"]),
+            step=0.05,
+            key=f"paper_age_{preset_key}",
+        )
 
-    seed = st.number_input(
-        "随机种子",
-        min_value=0,
-        max_value=999_999,
-        value=12345,
-        step=1,
-        key=f"seed_{preset_key}",
-    )
+        photo_options = ["无", "扫描件", "手机拍照"]
+        photo_effect = st.selectbox(
+            "导出外观",
+            photo_options,
+            index=option_index(
+                photo_options,
+                preset["photo_effect"],
+            ),
+            key=f"photo_{preset_key}",
+        )
+
+        texture_strength = st.slider(
+            "笔迹纹理",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(preset["texture_strength"]),
+            step=0.05,
+            key=f"texture_{preset_key}",
+        )
+
+        randomness = st.slider(
+            "自然随机程度",
+            min_value=0,
+            max_value=4,
+            value=int(preset["randomness"]),
+            key=f"random_{preset_key}",
+        )
+
+        slant = st.slider(
+            "右倾程度",
+            min_value=0.00,
+            max_value=0.20,
+            value=float(preset["slant"]),
+            step=0.01,
+            key=f"slant_{preset_key}",
+        )
+
+        connection_strength = st.slider(
+            "连笔流畅度",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(preset["connection_strength"]),
+            step=0.05,
+            help="仅调整整体连写感，不再人工添加细线。",
+            key=f"connection_{preset_key}",
+        )
+
+        word_spacing = st.slider(
+            "单词间距",
+            min_value=-8,
+            max_value=12,
+            value=int(preset["word_spacing"]),
+            key=f"word_spacing_{preset_key}",
+        )
+
+        baseline_wave = st.slider(
+            "基线起伏",
+            min_value=0.0,
+            max_value=5.0,
+            value=float(preset["baseline_wave"]),
+            step=0.2,
+            key=f"baseline_{preset_key}",
+        )
+
+        flourish_level = st.select_slider(
+            "句尾收笔",
+            options=[0, 1, 2, 3],
+            value=int(preset["flourish_level"]),
+            key=f"flourish_{preset_key}",
+        )
+
+        teacher_marks = st.select_slider(
+            "老师红笔批改",
+            options=[0, 1, 2, 3],
+            value=int(preset["teacher_marks"]),
+            key=f"teacher_{preset_key}",
+        )
+
+        header_date = st.text_input(
+            "日期",
+            value="15.01",
+            key=f"header_date_{preset_key}",
+        )
+
+        header_lesson = st.text_input(
+            "课题",
+            value="Урок русского языка",
+            key=f"header_lesson_{preset_key}",
+        )
+
+        show_page_number = st.checkbox(
+            "显示手写页码",
+            value=False,
+            key=f"page_number_{preset_key}",
+        )
+
+        seed = st.number_input(
+            "随机种子",
+            min_value=0,
+            max_value=999_999,
+            value=12345,
+            step=1,
+            key=f"seed_{preset_key}",
+        )
+
+    # 基础模式下隐藏但仍保留默认值
+    if "paper_type" not in locals():
+        paper_type = preset["paper_type"]
+    if "line_spacing" not in locals():
+        line_spacing = int(preset["line_spacing"])
+    if "paper_age" not in locals():
+        paper_age = float(preset["paper_age"])
+    if "photo_effect" not in locals():
+        photo_effect = preset["photo_effect"]
+    if "texture_strength" not in locals():
+        texture_strength = float(preset["texture_strength"])
+    if "randomness" not in locals():
+        randomness = int(preset["randomness"])
+    if "slant" not in locals():
+        slant = float(preset["slant"])
+    if "connection_strength" not in locals():
+        connection_strength = float(preset["connection_strength"])
+    if "word_spacing" not in locals():
+        word_spacing = int(preset["word_spacing"])
+    if "baseline_wave" not in locals():
+        baseline_wave = float(preset["baseline_wave"])
+    if "flourish_level" not in locals():
+        flourish_level = int(preset["flourish_level"])
+    if "teacher_marks" not in locals():
+        teacher_marks = int(preset["teacher_marks"])
+    if "header_date" not in locals():
+        header_date = "15.01"
+    if "header_lesson" not in locals():
+        header_lesson = "Урок русского языка"
+    if "show_page_number" not in locals():
+        show_page_number = False
+    if "seed" not in locals():
+        seed = 12345
 
 
 st.subheader("1. 上传文档或输入文字")
@@ -3257,19 +3331,20 @@ if generate_clicked:
                 font_files[selected_font_name]
             ),
             font_size=font_size,
-            line_spacing=line_spacing,
-            paper_type=paper_type,
+            line_spacing=int(line_spacing),
+            paper_type=str(paper_type),
             paper_age=float(paper_age),
-            photo_effect=photo_effect,
-            ink_name=ink_name,
-            pen_style=pen_style,
+            photo_effect=str(photo_effect),
+            ink_name=str(ink_name),
+            pen_style=str(pen_style),
             texture_strength=float(
                 texture_strength
             ),
-            randomness=randomness,
+            font_weight=float(font_weight),
+            randomness=int(randomness),
             seed=int(seed),
             slant=float(slant),
-            word_spacing=word_spacing,
+            word_spacing=int(word_spacing),
             connection_strength=float(
                 connection_strength
             ),
@@ -3288,8 +3363,8 @@ if generate_clicked:
             header_enabled=bool(
                 header_enabled
             ),
-            header_date=header_date,
-            header_lesson=header_lesson,
+            header_date=str(header_date),
+            header_lesson=str(header_lesson),
             show_page_number=bool(
                 show_page_number
             ),
