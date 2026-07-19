@@ -526,13 +526,27 @@ def cleanup_connection_hairlines(
     alpha_mask: Image.Image,
 ) -> Image.Image:
     """
-    清理字母连接处容易出现的细小毛刺或杂线。
-    不会做人工连线，只是柔和地清理极细伪影。
+    清理文字周围低透明度的小细线和毛刺。
+
+    先删除非常淡的孤立像素，再轻微中值滤波。
+    不会人工连接字符，也不会增加额外入笔线。
     """
-    cleaned = alpha_mask.filter(ImageFilter.MedianFilter(3))
-    cleaned = cleaned.point(
-        lambda pixel: 0 if pixel < 10 else pixel
+    thresholded = alpha_mask.point(
+        lambda pixel: 0 if pixel < 26 else pixel
     )
+
+    smoothed = thresholded.filter(
+        ImageFilter.MedianFilter(3)
+    )
+
+    cleaned = Image.blend(
+        thresholded,
+        smoothed,
+        0.38,
+    ).point(
+        lambda pixel: 0 if pixel < 18 else pixel
+    )
+
     return cleaned
 
 
@@ -720,31 +734,29 @@ def add_light_paper_texture(
     )
     image.alpha_composite(cloud_layer)
 
-    # 轻微纤维感，用短小、低透明度线段表示纸纤维，不是“脏线”
-    fiber_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    fiber_draw = ImageDraw.Draw(fiber_layer)
+    # 使用柔和颗粒模拟纸纤维，避免生成随机短细线。
+    fiber_noise = Image.effect_noise(
+        image.size,
+        5.0 + age * 7.0,
+    ).convert("L")
 
-    fiber_count = 120 + int(age * 200)
-    for _ in range(fiber_count):
-        x1 = rng.randint(0, PAGE_WIDTH - 1)
-        y1 = rng.randint(0, PAGE_HEIGHT - 1)
-        x2 = x1 + rng.randint(-10, 10)
-        y2 = y1 + rng.randint(-3, 3)
-
-        fiber_draw.line(
-            (x1, y1, x2, y2),
-            fill=(
-                rng.randint(226, 239),
-                rng.randint(223, 236),
-                rng.randint(214, 230),
-                rng.randint(6, 15),
-            ),
-            width=1,
-        )
-
-    fiber_layer = fiber_layer.filter(
-        ImageFilter.GaussianBlur(radius=0.35)
+    fiber_noise = fiber_noise.filter(
+        ImageFilter.GaussianBlur(radius=0.65)
     )
+
+    fiber_alpha = fiber_noise.point(
+        lambda pixel: int(
+            abs(pixel - 128)
+            * (0.10 + age * 0.10)
+        )
+    )
+
+    fiber_layer = Image.new(
+        "RGBA",
+        image.size,
+        (225, 220, 210, 0),
+    )
+    fiber_layer.putalpha(fiber_alpha)
     image.alpha_composite(fiber_layer)
 
     if age > 0.16:
@@ -1578,6 +1590,47 @@ def draw_end_flourish(
         )
 
 
+def get_correction_stroke_width(
+    settings: RenderSettings,
+) -> int:
+    """
+    让涂改笔画粗细与正文同步。
+
+    字体越大、字体粗细越高，涂改笔画也越粗；
+    不同书写工具只做很小的自然差异。
+    """
+    pen_factor = {
+        "铅笔": 0.92,
+        "圆珠笔": 0.98,
+        "钢笔": 1.04,
+        "中性笔": 1.08,
+    }.get(settings.pen_style, 1.0)
+
+    width = round(
+        settings.font_size
+        / 22.0
+        * settings.font_weight
+        * pen_factor
+    )
+
+    return max(1, min(6, width))
+
+
+def correction_fill(
+    color: tuple[int, int, int],
+    rng: random.Random,
+) -> tuple[int, int, int, int]:
+    """
+    涂改使用接近正文的不透明墨迹，不再淡化。
+    """
+    return (
+        color[0],
+        color[1],
+        color[2],
+        rng.randint(238, 255),
+    )
+
+
 def draw_strikethrough(
     page: Image.Image,
     left: int,
@@ -1585,15 +1638,16 @@ def draw_strikethrough(
     width: int,
     height: int,
     color: tuple[int, int, int],
+    settings: RenderSettings,
     rng: random.Random,
     start_ratio: float = 0.0,
     end_ratio: float = 1.0,
 ) -> None:
     """
-    绘制删除线。
-    支持只划掉单词中的一部分，让笔误更像真实学生作业。
+    绘制一到两道自然删除线。
     """
     draw = ImageDraw.Draw(page)
+    stroke_width = get_correction_stroke_width(settings)
 
     start_ratio = max(0.0, min(1.0, start_ratio))
     end_ratio = max(start_ratio + 0.05, min(1.0, end_ratio))
@@ -1604,15 +1658,16 @@ def draw_strikethrough(
 
     line_count = rng.choices(
         [1, 2],
-        weights=[68, 32],
+        weights=[72, 28],
         k=1,
     )[0]
 
     for index in range(line_count):
-        start_y = top + int(
-            height * rng.uniform(0.40, 0.64)
-        ) + index * rng.randint(1, 3)
-
+        start_y = (
+            top
+            + int(height * rng.uniform(0.40, 0.64))
+            + index * rng.randint(1, max(2, stroke_width))
+        )
         end_y = start_y + rng.randint(-4, 4)
 
         middle_x = line_left + line_width // 2
@@ -1630,13 +1685,8 @@ def draw_strikethrough(
 
         draw.line(
             points,
-            fill=(
-                color[0],
-                color[1],
-                color[2],
-                rng.randint(175, 228),
-            ),
-            width=1 if index else rng.choice([1, 2]),
+            fill=correction_fill(color, rng),
+            width=stroke_width,
             joint="curve",
         )
 
@@ -1647,12 +1697,6 @@ def choose_error_fragment(
     width: int,
     rng: random.Random,
 ) -> dict[str, object]:
-    """
-    选择更像真实笔误的片段：
-    - 开头 1~3 个字母
-    - 中间 1~3 个字母
-    - 结尾 1~4 个字母
-    """
     length = len(word)
 
     if length <= 3:
@@ -1661,23 +1705,23 @@ def choose_error_fragment(
     else:
         region = rng.choices(
             ["prefix", "middle", "suffix"],
-            weights=[18, 27, 55],
+            weights=[12, 26, 62],
             k=1,
         )[0]
 
+        frag_len = min(
+            length,
+            rng.randint(1, min(3, length)),
+        )
+
         if region == "prefix":
-            frag_len = min(length, rng.randint(1, min(3, length)))
             start_index = 0
             end_index = frag_len
-
         elif region == "middle":
-            frag_len = min(length, rng.randint(1, min(3, length)))
             max_start = max(1, length - frag_len - 1)
             start_index = rng.randint(1, max_start)
             end_index = start_index + frag_len
-
         else:
-            frag_len = min(length, rng.randint(1, min(4, length)))
             start_index = max(0, length - frag_len)
             end_index = length
 
@@ -1685,7 +1729,10 @@ def choose_error_fragment(
     end_ratio = end_index / max(1, length)
 
     fragment_left = left + int(width * start_ratio)
-    fragment_width = max(10, int(width * (end_ratio - start_ratio)))
+    fragment_width = max(
+        10,
+        int(width * (end_ratio - start_ratio)),
+    )
 
     return {
         "text": word[start_index:end_index],
@@ -1705,56 +1752,63 @@ def draw_scribble_correction(
     width: int,
     height: int,
     color: tuple[int, int, int],
+    settings: RenderSettings,
     rng: random.Random,
     style: str = "messy",
 ) -> None:
     """
-    按参考图风格绘制涂改：
-    - neat: 规整型斜线/井字
-    - messy: 乱涂型密集乱线
+    规整斜线或密集乱涂。
+    所有线条都与正文字体粗细同步。
     """
     draw = ImageDraw.Draw(page)
+    stroke_width = get_correction_stroke_width(settings)
 
     if style == "neat":
-        # 规整型：2~4 道斜线，偶尔加一两道反向线
         primary_count = rng.randint(2, 4)
-        for idx in range(primary_count):
+
+        for index in range(primary_count):
             x1 = left + rng.randint(-1, max(2, width // 5))
-            y1 = top + int(height * rng.uniform(0.24, 0.38)) + idx * rng.randint(1, 3)
+            y1 = (
+                top
+                + int(height * rng.uniform(0.24, 0.38))
+                + index * rng.randint(1, max(2, stroke_width))
+            )
             x2 = left + width - rng.randint(0, max(2, width // 7))
-            y2 = top + int(height * rng.uniform(0.66, 0.82)) + idx * rng.randint(-1, 2)
+            y2 = (
+                top
+                + int(height * rng.uniform(0.66, 0.82))
+                + index * rng.randint(-1, 2)
+            )
 
             draw.line(
                 (x1, y1, x2, y2),
-                fill=(color[0], color[1], color[2], rng.randint(145, 210)),
-                width=rng.choice([1, 1, 2]),
+                fill=correction_fill(color, rng),
+                width=stroke_width,
                 joint="curve",
             )
 
-        if rng.random() < 0.65:
-            secondary_count = rng.randint(1, 2)
-            for idx in range(secondary_count):
+        if rng.random() < 0.58:
+            for _ in range(rng.randint(1, 2)):
                 x1 = left + rng.randint(-1, max(2, width // 6))
-                y1 = top + int(height * rng.uniform(0.68, 0.82)) + idx
+                y1 = top + int(height * rng.uniform(0.67, 0.82))
                 x2 = left + width - rng.randint(0, max(2, width // 7))
-                y2 = top + int(height * rng.uniform(0.24, 0.40)) + idx
+                y2 = top + int(height * rng.uniform(0.24, 0.41))
 
                 draw.line(
                     (x1, y1, x2, y2),
-                    fill=(color[0], color[1], color[2], rng.randint(115, 175)),
-                    width=1,
+                    fill=correction_fill(color, rng),
+                    width=stroke_width,
                     joint="curve",
                 )
         return
 
-    # messy：更像“乱七八糟型”乱涂
-    stroke_count = rng.randint(6, 11)
-    for stroke_index in range(stroke_count):
+    stroke_count = rng.randint(5, 9)
+
+    for _ in range(stroke_count):
         points: list[tuple[int, int]] = []
         segments = rng.randint(3, 6)
 
-        start_side = rng.choice(["left", "right"])
-        if start_side == "left":
+        if rng.random() < 0.5:
             x = left + rng.randint(-1, max(1, width // 7))
         else:
             x = left + width - rng.randint(0, max(1, width // 7))
@@ -1764,20 +1818,98 @@ def draw_scribble_correction(
 
         for _ in range(segments):
             x = left + rng.randint(0, max(2, width))
-            y = top + rng.randint(int(height * 0.18), max(int(height * 0.82), 1))
+            y = top + rng.randint(
+                int(height * 0.18),
+                max(int(height * 0.82), 1),
+            )
             points.append((x, y))
 
         draw.line(
             points,
-            fill=(
-                color[0],
-                color[1],
-                color[2],
-                rng.randint(120, 195),
-            ),
-            width=rng.choice([1, 1, 2]),
+            fill=correction_fill(color, rng),
+            width=stroke_width,
             joint="curve",
         )
+
+
+def draw_caret_mark(
+    page: Image.Image,
+    center_x: int,
+    baseline_y: int,
+    color: tuple[int, int, int],
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    stroke_width = get_correction_stroke_width(settings)
+    size = rng.randint(6, 10) + stroke_width
+    bottom_y = baseline_y + rng.randint(7, 11)
+    top_y = bottom_y - size
+
+    ImageDraw.Draw(page).line(
+        (
+            center_x - size,
+            bottom_y,
+            center_x,
+            top_y,
+            center_x + size,
+            bottom_y,
+        ),
+        fill=correction_fill(color, rng),
+        width=stroke_width,
+        joint="curve",
+    )
+
+
+def draw_rewrite_above(
+    page: Image.Image,
+    rewrite_text: str,
+    left: int,
+    top: int,
+    settings: RenderSettings,
+    rng: random.Random,
+    compact: bool = False,
+) -> None:
+    """
+    上方重写保留当前字体粗细和书写工具，不再降低透明度。
+    """
+    rewrite_settings = replace(
+        settings,
+        font_size=max(
+            22 if compact else 24,
+            settings.font_size - (10 if compact else 8),
+        ),
+        texture_strength=settings.texture_strength,
+        font_weight=settings.font_weight,
+        randomness=max(0, settings.randomness - 1),
+        correction_level=0,
+        teacher_marks=0,
+        flourish_level=0,
+        baseline_wave=0.0,
+    )
+
+    rewrite_image, _, _, _ = render_word_image(
+        rewrite_text,
+        rewrite_settings,
+        rng,
+    )
+
+    rewrite_x = left + rng.randint(-2, 8)
+    rewrite_y = (
+        top
+        - int(
+            settings.font_size
+            * (0.42 if compact else 0.48)
+        )
+        + rng.randint(-4, 3)
+    )
+
+    page.alpha_composite(
+        rewrite_image,
+        (
+            max(0, rewrite_x),
+            max(0, rewrite_y),
+        ),
+    )
 
 
 def draw_inline_overwrite(
@@ -1789,8 +1921,7 @@ def draw_inline_overwrite(
     rng: random.Random,
 ) -> None:
     """
-    模拟把一个词/字写了一遍又马上在原位重写，
-    接近参考图中“字上叠字”的效果。
+    字上叠字使用正常墨迹，不再使用淡灰透明文字。
     """
     overwrite_settings = replace(
         settings,
@@ -1806,8 +1937,11 @@ def draw_inline_overwrite(
         overwrite_settings,
         rng,
     )
+
     first_alpha = first.getchannel("A").point(
-        lambda pixel: int(pixel * rng.uniform(0.22, 0.38))
+        lambda pixel: int(
+            pixel * rng.uniform(0.88, 1.0)
+        )
     )
     first.putalpha(first_alpha)
 
@@ -1819,14 +1953,17 @@ def draw_inline_overwrite(
         ),
     )
 
-    if rng.random() < 0.58:
+    if rng.random() < 0.42:
         second, _, _, _ = render_word_image(
             text,
             overwrite_settings,
             rng,
         )
+
         second_alpha = second.getchannel("A").point(
-            lambda pixel: int(pixel * rng.uniform(0.18, 0.30))
+            lambda pixel: int(
+                pixel * rng.uniform(0.82, 0.96)
+            )
         )
         second.putalpha(second_alpha)
 
@@ -1839,209 +1976,6 @@ def draw_inline_overwrite(
         )
 
 
-def draw_partial_replace_note(
-    page: Image.Image,
-    fragment_text: str,
-    left: int,
-    top: int,
-    settings: RenderSettings,
-    rng: random.Random,
-) -> None:
-    """
-    局部改错常见形式：轻微覆盖后在上方补正确片段。
-    """
-    if rng.random() < 0.72:
-        draw_inline_overwrite(
-            page,
-            fragment_text,
-            left,
-            top,
-            settings,
-            rng,
-        )
-
-    cancel_style = rng.choices(
-        ["scratch", "strike", "neat", "diagonal"],
-        weights=[36, 24, 24, 16],
-        k=1,
-    )[0]
-
-    ink = varied_ink_color(settings, rng)
-
-    if cancel_style == "scratch":
-        draw_short_scratch(
-            page,
-            left,
-            top,
-            max(8, len(fragment_text) * 12),
-            max(12, int(settings.font_size * 0.9)),
-            ink,
-            rng,
-        )
-    elif cancel_style == "neat":
-        draw_scribble_correction(
-            page,
-            left,
-            top,
-            max(8, len(fragment_text) * 12),
-            max(12, int(settings.font_size * 0.9)),
-            ink,
-            rng,
-            style="neat",
-        )
-    elif cancel_style == "diagonal":
-        draw_diagonal_cancel(
-            page,
-            left,
-            top,
-            max(8, len(fragment_text) * 12),
-            max(12, int(settings.font_size * 0.9)),
-            ink,
-            rng,
-        )
-    else:
-        draw_strikethrough(
-            page,
-            left,
-            top,
-            max(8, len(fragment_text) * 12),
-            max(12, int(settings.font_size * 0.9)),
-            ink,
-            rng,
-        )
-
-    draw_rewrite_above(
-        page,
-        fragment_text,
-        left + rng.randint(-1, 2),
-        top,
-        settings,
-        rng,
-        compact=True,
-    )
-
-
-def draw_retry_block(
-    page: Image.Image,
-    text: str,
-    left: int,
-    top: int,
-    settings: RenderSettings,
-    rng: random.Random,
-) -> None:
-    """
-    模拟“写错了，随手乱划，再重写一遍”的笔记式改法。
-    """
-    ink = varied_ink_color(settings, rng)
-
-    messy = rng.random() < 0.55
-    draw_scribble_correction(
-        page,
-        left,
-        top,
-        max(18, int(len(text) * settings.font_size * 0.45)),
-        max(16, int(settings.font_size * 1.0)),
-        ink,
-        rng,
-        style="messy" if messy else "neat",
-    )
-
-    if rng.random() < 0.82:
-        draw_rewrite_above(
-            page,
-            text,
-            left + rng.randint(-1, 4),
-            top,
-            settings,
-            rng,
-            compact=bool(rng.random() < 0.6),
-        )
-
-
-def draw_caret_mark(
-    page: Image.Image,
-    center_x: int,
-    baseline_y: int,
-    color: tuple[int, int, int],
-    rng: random.Random,
-) -> None:
-    """
-    绘制学生常用的插入符号。
-    """
-    size = rng.randint(6, 10)
-    bottom_y = baseline_y + rng.randint(7, 11)
-    top_y = bottom_y - size
-
-    ImageDraw.Draw(page).line(
-        (
-            center_x - size,
-            bottom_y,
-            center_x,
-            top_y,
-            center_x + size,
-            bottom_y,
-        ),
-        fill=(color[0], color[1], color[2], 205),
-        width=1,
-        joint="curve",
-    )
-
-
-def draw_rewrite_above(
-    page: Image.Image,
-    rewrite_text: str,
-    left: int,
-    top: int,
-    settings: RenderSettings,
-    rng: random.Random,
-    compact: bool = False,
-) -> None:
-    """
-    在原词上方重写，位置更像学生快速改错。
-    """
-    rewrite_settings = replace(
-        settings,
-        font_size=max(
-            22 if compact else 24,
-            settings.font_size - (11 if compact else 9),
-        ),
-        texture_strength=min(
-            1.0,
-            settings.texture_strength + 0.04,
-        ),
-        randomness=max(0, settings.randomness - 1),
-        correction_level=0,
-        teacher_marks=0,
-        flourish_level=0,
-        baseline_wave=0.0,
-        connection_strength=min(
-            0.72,
-            settings.connection_strength,
-        ),
-    )
-
-    rewrite_image, _, _, _ = render_word_image(
-        rewrite_text,
-        rewrite_settings,
-        rng,
-    )
-
-    rewrite_x = left + rng.randint(-2, 9)
-    rewrite_y = (
-        top
-        - int(settings.font_size * (0.42 if compact else 0.48))
-        + rng.randint(-4, 3)
-    )
-
-    page.alpha_composite(
-        rewrite_image,
-        (
-            max(0, rewrite_x),
-            max(0, rewrite_y),
-        ),
-    )
-
-
 def draw_diagonal_cancel(
     page: Image.Image,
     left: int,
@@ -2049,13 +1983,16 @@ def draw_diagonal_cancel(
     width: int,
     height: int,
     color: tuple[int, int, int],
+    settings: RenderSettings,
     rng: random.Random,
 ) -> None:
-    """
-    斜划或斜叉，常见于学生快速改错。
-    """
     draw = ImageDraw.Draw(page)
-    line_count = rng.choices([1, 2], weights=[72, 28], k=1)[0]
+    stroke_width = get_correction_stroke_width(settings)
+    line_count = rng.choices(
+        [1, 2],
+        weights=[72, 28],
+        k=1,
+    )[0]
 
     x1 = left + rng.randint(-1, 2)
     y1 = top + int(height * rng.uniform(0.25, 0.45))
@@ -2064,8 +2001,8 @@ def draw_diagonal_cancel(
 
     draw.line(
         (x1, y1, x2, y2),
-        fill=(color[0], color[1], color[2], rng.randint(170, 225)),
-        width=rng.choice([1, 1, 2]),
+        fill=correction_fill(color, rng),
+        width=stroke_width,
         joint="curve",
     )
 
@@ -2077,8 +2014,8 @@ def draw_diagonal_cancel(
 
         draw.line(
             (x3, y3, x4, y4),
-            fill=(color[0], color[1], color[2], rng.randint(145, 205)),
-            width=1,
+            fill=correction_fill(color, rng),
+            width=stroke_width,
             joint="curve",
         )
 
@@ -2090,12 +2027,11 @@ def draw_loop_cancel(
     width: int,
     height: int,
     color: tuple[int, int, int],
+    settings: RenderSettings,
     rng: random.Random,
 ) -> None:
-    """
-    用不规则圈或环绕线表示这一段写错了。
-    """
     draw = ImageDraw.Draw(page)
+    stroke_width = get_correction_stroke_width(settings)
 
     cx = left + width // 2
     cy = top + int(height * 0.55)
@@ -2116,11 +2052,11 @@ def draw_loop_cancel(
         bbox,
         start=start_angle,
         end=end_angle,
-        fill=(color[0], color[1], color[2], rng.randint(165, 225)),
-        width=rng.choice([1, 1, 2]),
+        fill=correction_fill(color, rng),
+        width=stroke_width,
     )
 
-    if rng.random() < 0.35:
+    if rng.random() < 0.28:
         draw.arc(
             (
                 bbox[0] + rng.randint(-2, 1),
@@ -2130,8 +2066,8 @@ def draw_loop_cancel(
             ),
             start=start_angle + rng.randint(-18, 14),
             end=end_angle - rng.randint(12, 24),
-            fill=(color[0], color[1], color[2], rng.randint(90, 155)),
-            width=1,
+            fill=correction_fill(color, rng),
+            width=stroke_width,
         )
 
 
@@ -2142,15 +2078,13 @@ def draw_short_scratch(
     width: int,
     height: int,
     color: tuple[int, int, int],
+    settings: RenderSettings,
     rng: random.Random,
 ) -> None:
-    """
-    短促的刮擦式涂改，常见于改一个词尾。
-    """
     draw = ImageDraw.Draw(page)
-    stroke_count = rng.randint(2, 4)
+    stroke_width = get_correction_stroke_width(settings)
 
-    for _ in range(stroke_count):
+    for _ in range(rng.randint(2, 4)):
         sx = left + rng.randint(-1, max(1, width // 4))
         ex = left + width - rng.randint(0, max(1, width // 5))
         sy = top + int(height * rng.uniform(0.38, 0.68))
@@ -2168,138 +2102,10 @@ def draw_short_scratch(
 
         draw.line(
             points,
-            fill=(color[0], color[1], color[2], rng.randint(120, 195)),
-            width=1,
+            fill=correction_fill(color, rng),
+            width=stroke_width,
             joint="curve",
         )
-
-
-def apply_random_cancel_mark(
-    page: Image.Image,
-    left: int,
-    top: int,
-    width: int,
-    height: int,
-    color: tuple[int, int, int],
-    rng: random.Random,
-    allow_loop: bool = True,
-) -> None:
-    """
-    随机选择一种更自然的手写涂改方式，
-    不局限于横线。
-    """
-    styles = ["strike", "diagonal", "scratch", "scribble"]
-    weights = [26, 24, 24, 18]
-
-    if allow_loop:
-        styles.append("loop")
-        weights.append(8)
-
-    style = rng.choices(styles, weights=weights, k=1)[0]
-
-    if style == "strike":
-        draw_strikethrough(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-    elif style == "diagonal":
-        draw_diagonal_cancel(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-    elif style == "scratch":
-        draw_short_scratch(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-    elif style == "loop":
-        draw_loop_cancel(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-    else:
-        draw_scribble_correction(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-
-
-
-def choose_micro_fragment(
-    word: str,
-    left: int,
-    width: int,
-    rng: random.Random,
-) -> dict[str, object]:
-    """
-    选择更像作业本里“改一个词尾/一个字母/两个字母”的局部片段。
-    """
-    length = len(word)
-
-    if length <= 2:
-        start_index = 0
-        end_index = length
-    else:
-        region = rng.choices(
-            ["suffix", "middle", "prefix"],
-            weights=[62, 26, 12],
-            k=1,
-        )[0]
-
-        max_frag = 2 if length <= 5 else 3
-        frag_len = min(length, rng.randint(1, max_frag))
-
-        if region == "suffix":
-            start_index = max(0, length - frag_len)
-            end_index = length
-        elif region == "middle":
-            max_start = max(1, length - frag_len - 1)
-            start_index = rng.randint(1, max_start)
-            end_index = start_index + frag_len
-        else:
-            start_index = 0
-            end_index = frag_len
-
-    start_ratio = start_index / max(1, length)
-    end_ratio = end_index / max(1, length)
-
-    fragment_left = left + int(width * start_ratio)
-    fragment_width = max(10, int(width * (end_ratio - start_ratio)))
-
-    return {
-        "text": word[start_index:end_index],
-        "start_ratio": start_ratio,
-        "end_ratio": end_ratio,
-        "left": fragment_left,
-        "width": fragment_width,
-        "start_index": start_index,
-        "end_index": end_index,
-    }
 
 
 def draw_fragment_hatch_fix(
@@ -2313,14 +2119,9 @@ def draw_fragment_hatch_fix(
     rng: random.Random,
     hatch_style: str,
 ) -> None:
-    """
-    参考图中的局部改错：
-    局部先被几道线压住，再在上方或附近补写。
-    """
     ink = varied_ink_color(settings, rng)
 
-    # 先轻微叠写，使错误部分看起来像真的写出来过
-    if rng.random() < 0.70:
+    if rng.random() < 0.58:
         draw_inline_overwrite(
             page,
             fragment_text,
@@ -2330,53 +2131,66 @@ def draw_fragment_hatch_fix(
             rng,
         )
 
-    if hatch_style == "规整型":
-        draw_scribble_correction(
-            page,
-            left,
-            top,
-            width,
-            height,
-            ink,
-            rng,
-            style="neat",
-        )
-    elif hatch_style == "乱涂型":
-        draw_scribble_correction(
-            page,
-            left,
-            top,
-            width,
-            height,
-            ink,
-            rng,
-            style="messy",
-        )
-    else:
+    style = hatch_style
+
+    if style not in {
+        "规整型",
+        "乱涂型",
+    }:
         style = rng.choices(
-            ["neat", "messy", "scratch", "diagonal"],
-            weights=[34, 20, 28, 18],
+            ["规整型", "乱涂型", "短刮擦", "斜划"],
+            weights=[35, 20, 28, 17],
             k=1,
         )[0]
 
-        if style == "neat":
-            draw_scribble_correction(
-                page, left, top, width, height, ink, rng, style="neat"
-            )
-        elif style == "messy":
-            draw_scribble_correction(
-                page, left, top, width, height, ink, rng, style="messy"
-            )
-        elif style == "scratch":
-            draw_short_scratch(
-                page, left, top, width, height, ink, rng
-            )
-        else:
-            draw_diagonal_cancel(
-                page, left, top, width, height, ink, rng
-            )
+    if style == "规整型":
+        draw_scribble_correction(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            settings,
+            rng,
+            style="neat",
+        )
+    elif style == "乱涂型":
+        draw_scribble_correction(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            settings,
+            rng,
+            style="messy",
+        )
+    elif style == "短刮擦":
+        draw_short_scratch(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            settings,
+            rng,
+        )
+    else:
+        draw_diagonal_cancel(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            settings,
+            rng,
+        )
 
-    if rng.random() < 0.88:
+    if rng.random() < 0.86:
         draw_rewrite_above(
             page,
             fragment_text,
@@ -2388,20 +2202,135 @@ def draw_fragment_hatch_fix(
         )
 
 
+def draw_retry_block(
+    page: Image.Image,
+    text: str,
+    left: int,
+    top: int,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    ink = varied_ink_color(settings, rng)
+
+    draw_scribble_correction(
+        page,
+        left,
+        top,
+        max(
+            18,
+            int(
+                len(text)
+                * settings.font_size
+                * 0.45
+            ),
+        ),
+        max(
+            16,
+            int(settings.font_size * 1.0),
+        ),
+        ink,
+        settings,
+        rng,
+        style=(
+            "messy"
+            if rng.random() < 0.55
+            else "neat"
+        ),
+    )
+
+    if rng.random() < 0.82:
+        draw_rewrite_above(
+            page,
+            text,
+            left + rng.randint(-1, 4),
+            top,
+            settings,
+            rng,
+            compact=bool(rng.random() < 0.6),
+        )
+
+
+def choose_micro_fragment(
+    word: str,
+    left: int,
+    width: int,
+    rng: random.Random,
+) -> dict[str, object]:
+    length = len(word)
+
+    if length <= 2:
+        start_index = 0
+        end_index = length
+    else:
+        region = rng.choices(
+            ["suffix", "middle", "prefix"],
+            weights=[62, 26, 12],
+            k=1,
+        )[0]
+
+        max_fragment = 2 if length <= 5 else 3
+        fragment_length = min(
+            length,
+            rng.randint(1, max_fragment),
+        )
+
+        if region == "suffix":
+            start_index = max(
+                0,
+                length - fragment_length,
+            )
+            end_index = length
+        elif region == "middle":
+            max_start = max(
+                1,
+                length - fragment_length - 1,
+            )
+            start_index = rng.randint(
+                1,
+                max_start,
+            )
+            end_index = (
+                start_index
+                + fragment_length
+            )
+        else:
+            start_index = 0
+            end_index = fragment_length
+
+    start_ratio = start_index / max(1, length)
+    end_ratio = end_index / max(1, length)
+
+    return {
+        "text": word[start_index:end_index],
+        "start_ratio": start_ratio,
+        "end_ratio": end_ratio,
+        "left": (
+            left
+            + int(width * start_ratio)
+        ),
+        "width": max(
+            10,
+            int(
+                width
+                * (end_ratio - start_ratio)
+            ),
+        ),
+        "start_index": start_index,
+        "end_index": end_index,
+    }
+
+
 def get_correction_style_weights(
     correction_style: str,
 ) -> dict[str, int]:
-    """
-    根据涂改风格返回样式权重。
-    """
     if correction_style == "局部改错型":
         return {
-            "tail_fix": 34,
+            "tail_fix": 36,
             "inline_overwrite_fix": 22,
-            "messy_hatch_fix": 8,
+            "messy_hatch_fix": 7,
             "neat_hatch_fix": 18,
             "caret_insert": 8,
-            "whole_word_retry": 4,
+            "whole_word_retry": 3,
             "cross_fix": 6,
         }
 
@@ -2410,30 +2339,30 @@ def get_correction_style_weights(
             "tail_fix": 22,
             "inline_overwrite_fix": 18,
             "messy_hatch_fix": 4,
-            "neat_hatch_fix": 32,
-            "caret_insert": 9,
-            "whole_word_retry": 6,
+            "neat_hatch_fix": 34,
+            "caret_insert": 8,
+            "whole_word_retry": 5,
             "cross_fix": 9,
         }
 
     if correction_style == "乱涂型":
         return {
-            "tail_fix": 14,
+            "tail_fix": 13,
             "inline_overwrite_fix": 12,
-            "messy_hatch_fix": 32,
-            "neat_hatch_fix": 6,
-            "caret_insert": 7,
-            "whole_word_retry": 16,
-            "cross_fix": 13,
+            "messy_hatch_fix": 35,
+            "neat_hatch_fix": 5,
+            "caret_insert": 6,
+            "whole_word_retry": 17,
+            "cross_fix": 12,
         }
 
     return {
-        "tail_fix": 28,
+        "tail_fix": 29,
         "inline_overwrite_fix": 18,
         "messy_hatch_fix": 14,
         "neat_hatch_fix": 13,
         "caret_insert": 10,
-        "whole_word_retry": 9,
+        "whole_word_retry": 8,
         "cross_fix": 8,
     }
 
@@ -2449,12 +2378,6 @@ def maybe_draw_correction(
     settings: RenderSettings,
     rng: random.Random,
 ) -> None:
-    """
-    涂改笔记终极优化版：
-    - 更偏向改词尾、局部片段
-    - 支持规整型、乱涂型、混合型、局部改错型
-    - 更像先写错、轻微覆盖、再补写的真实作业本痕迹
-    """
     if settings.correction_level <= 0:
         return
 
@@ -2475,10 +2398,17 @@ def maybe_draw_correction(
         7,
         base_denominator
         + rng.randint(-3, 4)
-        - (1 if len(clean_word) >= 7 else 0),
+        - (
+            1
+            if len(clean_word) >= 7
+            else 0
+        ),
     )
 
-    if rng.randint(1, local_denominator) != 1:
+    if rng.randint(
+        1,
+        local_denominator,
+    ) != 1:
         return
 
     color = varied_ink_color(
@@ -2494,19 +2424,22 @@ def maybe_draw_correction(
     )
 
     fragment_left = int(fragment["left"])
-    fragment_width = max(12, int(fragment["width"]))
-    fragment_text = str(fragment["text"]) or clean_word
+    fragment_width = max(
+        12,
+        int(fragment["width"]),
+    )
+    fragment_text = (
+        str(fragment["text"])
+        or clean_word
+    )
 
     weights = get_correction_style_weights(
         settings.correction_style
     )
 
-    style_names = list(weights.keys())
-    style_weights = list(weights.values())
-
     style = rng.choices(
-        style_names,
-        weights=style_weights,
+        list(weights.keys()),
+        weights=list(weights.values()),
         k=1,
     )[0]
 
@@ -2524,7 +2457,6 @@ def maybe_draw_correction(
         )
 
     elif style == "inline_overwrite_fix":
-        # 参考图中的“字上叠字”
         draw_inline_overwrite(
             page,
             fragment_text,
@@ -2534,11 +2466,12 @@ def maybe_draw_correction(
             rng,
         )
 
-        if rng.random() < 0.82:
+        if rng.random() < 0.80:
             draw_rewrite_above(
                 page,
                 fragment_text,
-                fragment_left + rng.randint(-1, 2),
+                fragment_left
+                + rng.randint(-1, 2),
                 top,
                 settings,
                 rng,
@@ -2553,15 +2486,17 @@ def maybe_draw_correction(
             fragment_width,
             height,
             color,
+            settings,
             rng,
             style="messy",
         )
 
-        if rng.random() < 0.76:
+        if rng.random() < 0.74:
             draw_rewrite_above(
                 page,
                 fragment_text,
-                fragment_left + rng.randint(-1, 3),
+                fragment_left
+                + rng.randint(-1, 3),
                 top,
                 settings,
                 rng,
@@ -2576,11 +2511,12 @@ def maybe_draw_correction(
             fragment_width,
             height,
             color,
+            settings,
             rng,
             style="neat",
         )
 
-        if rng.random() < 0.88:
+        if rng.random() < 0.86:
             draw_rewrite_above(
                 page,
                 fragment_text,
@@ -2592,13 +2528,17 @@ def maybe_draw_correction(
             )
 
     elif style == "caret_insert":
-        caret_x = fragment_left + fragment_width // 2
+        caret_x = (
+            fragment_left
+            + fragment_width // 2
+        )
 
         draw_caret_mark(
             page,
             caret_x,
             baseline_y,
             color,
+            settings,
             rng,
         )
 
@@ -2623,7 +2563,6 @@ def maybe_draw_correction(
         )
 
     else:
-        # cross_fix：局部斜叉/短刮擦再补写
         if rng.random() < 0.58:
             draw_diagonal_cancel(
                 page,
@@ -2632,6 +2571,7 @@ def maybe_draw_correction(
                 fragment_width,
                 height,
                 color,
+                settings,
                 rng,
             )
         else:
@@ -2642,14 +2582,16 @@ def maybe_draw_correction(
                 fragment_width,
                 height,
                 color,
+                settings,
                 rng,
             )
 
-        if rng.random() < 0.80:
+        if rng.random() < 0.78:
             draw_rewrite_above(
                 page,
                 fragment_text,
-                fragment_left + rng.randint(-1, 3),
+                fragment_left
+                + rng.randint(-1, 3),
                 top,
                 settings,
                 rng,
@@ -3296,17 +3238,6 @@ def draw_handwritten_line(
             - line_baseline
         )
 
-    draw_entry_stroke(
-        page=page,
-        x=x_start,
-        baseline_y=baseline_y,
-        color=ink_color,
-        strength=(
-            settings.connection_strength
-        ),
-        rng=rng,
-    )
-
     page.alpha_composite(
         line_image,
         (
@@ -3661,7 +3592,7 @@ st.set_page_config(
 )
 
 st.title("✍️ 手写生成器")
-st.caption("涂改笔记终极优化版：去掉连笔流畅度选项，增强纸张质感，并新增纸张褶皱选项。")
+st.caption("修复版：清除文字小细线，涂改笔迹不再淡化，并自动与字体大小和粗细保持一致。")
 
 font_files = get_font_files()
 
