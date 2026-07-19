@@ -1,0 +1,1 @@
+Place a Cyrillic-compatible .ttf or .otf handwriting font in this folder.
