@@ -9,22 +9,27 @@ import zipfile
 import fitz  # PyMuPDF
 import streamlit as st
 from docx import Document
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import (
+    Image,
+    ImageChops,
+    ImageDraw,
+    ImageFilter,
+    ImageFont,
+)
 
 
 # ============================================================
-# 基础设置
+# 页面设置
 # ============================================================
 PAGE_WIDTH = 1240
 PAGE_HEIGHT = 1754
 
-LEFT_MARGIN = 120
-RIGHT_MARGIN = 100
-TOP_MARGIN = 130
-BOTTOM_MARGIN = 110
+LEFT_MARGIN = 110
+RIGHT_MARGIN = 80
+TOP_MARGIN = 125
+BOTTOM_MARGIN = 100
 
 BASE_DIR = Path(__file__).resolve().parent
-FONT_DIR = BASE_DIR / "fonts"
 
 SUPPORTED_FILE_TYPES = ["pdf", "docx", "txt"]
 
@@ -38,7 +43,19 @@ class RenderSettings:
     ink_name: str
     randomness: int
     seed: int
-    quality_scale: int = 2
+    slant: float
+    word_spacing: int
+    quality_scale: int = 3
+
+    @property
+    def rule_spacing(self) -> int:
+        """
+        横线间距与文字行距保持一致。
+        """
+        return max(
+            self.font_size + 8,
+            self.font_size + self.line_spacing,
+        )
 
 
 # ============================================================
@@ -49,42 +66,65 @@ def clamp(value: int) -> int:
 
 
 def normalize_text(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    return (
+        text.replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .strip()
+    )
 
 
 def get_font_files() -> dict[str, Path]:
     """
-    只扫描 fonts 文件夹。
-    返回：{显示名称: 字体路径}
+    搜索整个项目中的 TTF 和 OTF 字体。
+
+    字体既可以放在 fonts 文件夹里，
+    也可以暂时与 app.py 并列。
     """
-    FONT_DIR.mkdir(exist_ok=True)
+    discovered: list[Path] = []
+
+    for pattern in ("*.ttf", "*.otf", "*.TTF", "*.OTF"):
+        discovered.extend(BASE_DIR.rglob(pattern))
+
+    unique_files = {
+        path.resolve()
+        for path in discovered
+        if path.is_file()
+        and ".venv" not in path.parts
+        and "site-packages" not in path.parts
+    }
 
     files = sorted(
-        [
-            *FONT_DIR.glob("*.ttf"),
-            *FONT_DIR.glob("*.otf"),
-            *FONT_DIR.glob("*.TTF"),
-            *FONT_DIR.glob("*.OTF"),
-        ],
-        key=lambda path: path.name.lower(),
+        unique_files,
+        key=lambda path: str(path).lower(),
     )
 
-    return {path.name: path for path in files}
+    return {
+        str(path.relative_to(BASE_DIR)): path
+        for path in files
+    }
 
 
 @st.cache_resource(show_spinner=False)
-def load_font(font_path: str, font_size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(font_path, font_size)
+def load_font(
+    font_path: str,
+    font_size: int,
+) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(
+        font_path,
+        font_size,
+    )
 
 
 # ============================================================
 # 文档文字提取
 # ============================================================
 def extract_text_from_txt(file_bytes: bytes) -> str:
-    """
-    尝试用常见编码读取 TXT。
-    """
-    encodings = ["utf-8-sig", "utf-8", "cp1251", "windows-1251"]
+    encodings = [
+        "utf-8-sig",
+        "utf-8",
+        "cp1251",
+        "windows-1251",
+    ]
 
     for encoding in encodings:
         try:
@@ -92,52 +132,57 @@ def extract_text_from_txt(file_bytes: bytes) -> str:
         except UnicodeDecodeError:
             continue
 
-    raise ValueError("无法识别 TXT 文件编码。请将文件另存为 UTF-8 后再上传。")
+    raise ValueError(
+        "无法识别 TXT 文件编码。请将文件另存为 UTF-8。"
+    )
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
-    """
-    提取 DOCX 中的段落和表格文字。
-    """
     document = Document(BytesIO(file_bytes))
     result: list[str] = []
 
-    for element in document.iter_inner_content():
-        if hasattr(element, "text") and not hasattr(element, "rows"):
-            result.append(element.text)
+    # 读取普通段落
+    for paragraph in document.paragraphs:
+        result.append(paragraph.text)
 
-        elif hasattr(element, "rows"):
-            for row in element.rows:
-                cells = [cell.text.strip() for cell in row.cells]
-                result.append(" | ".join(cells))
+    # 读取表格
+    for table in document.tables:
+        result.append("")
+
+        for row in table.rows:
+            cells = [
+                cell.text.strip()
+                for cell in row.cells
+            ]
+            result.append(" | ".join(cells))
 
     return "\n".join(result)
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """
-    提取文字型 PDF 的文字。
-    扫描版 PDF 不会自动 OCR。
+    只提取文字型 PDF。
+    扫描版 PDF 暂时没有 OCR。
     """
     result: list[str] = []
 
-    with fitz.open(stream=file_bytes, filetype="pdf") as document:
-        for page_number, page in enumerate(document, start=1):
+    with fitz.open(
+        stream=file_bytes,
+        filetype="pdf",
+    ) as document:
+        for page_index, page in enumerate(document):
             page_text = page.get_text("text").strip()
 
             if page_text:
                 result.append(page_text)
 
-            if page_number < len(document):
+            if page_index < len(document) - 1:
                 result.append("")
 
     return "\n".join(result)
 
 
 def extract_uploaded_file(uploaded_file) -> str:
-    """
-    根据扩展名选择提取方法。
-    """
     file_bytes = uploaded_file.getvalue()
     suffix = Path(uploaded_file.name).suffix.lower()
 
@@ -154,95 +199,114 @@ def extract_uploaded_file(uploaded_file) -> str:
 
 
 # ============================================================
-# 纸张背景
+# 作业本纸张
 # ============================================================
-def make_texture(
-    width: int,
-    height: int,
+def add_light_paper_texture(
+    image: Image.Image,
     rng: random.Random,
-) -> Image.Image:
+) -> None:
     """
-    使用低分辨率随机纹理放大，生成轻微纸张质感。
+    添加非常轻微的纸张颗粒。
+    参考图的纸比较干净，所以纹理不能太强。
     """
-    small_width = max(40, width // 10)
-    small_height = max(40, height // 10)
-
-    pixels = bytes(
-        rng.randint(235, 255)
-        for _ in range(small_width * small_height)
-    )
-
-    texture = Image.frombytes(
-        "L",
-        (small_width, small_height),
-        pixels,
-    )
-
-    return texture.resize(
-        (width, height),
-        Image.Resampling.BILINEAR,
-    ).convert("RGB")
-
-
-def create_paper_background(
-    paper_type: str,
-    rng: random.Random,
-) -> Image.Image:
-    base = Image.new(
-        "RGB",
-        (PAGE_WIDTH, PAGE_HEIGHT),
-        (248, 246, 240),
-    )
-
-    texture = make_texture(PAGE_WIDTH, PAGE_HEIGHT, rng)
-    image = Image.blend(base, texture, 0.12)
     draw = ImageDraw.Draw(image)
 
-    for _ in range(90):
+    for _ in range(1800):
+        x = rng.randint(0, PAGE_WIDTH - 1)
+        y = rng.randint(0, PAGE_HEIGHT - 1)
+        shade = rng.randint(-3, 3)
+
+        draw.point(
+            (x, y),
+            fill=(
+                clamp(247 + shade),
+                clamp(244 + shade),
+                clamp(235 + shade),
+            ),
+        )
+
+    for _ in range(55):
         x1 = rng.randint(0, PAGE_WIDTH - 1)
         y1 = rng.randint(0, PAGE_HEIGHT - 1)
-        x2 = x1 + rng.randint(-15, 15)
-        y2 = y1 + rng.randint(-15, 15)
+        x2 = x1 + rng.randint(-13, 13)
+        y2 = y1 + rng.randint(-5, 5)
 
         draw.line(
             (x1, y1, x2, y2),
-            fill=(239, 236, 229),
+            fill=(240, 237, 229),
             width=1,
         )
 
-    if paper_type == "横线纸":
-        for y in range(TOP_MARGIN, PAGE_HEIGHT - BOTTOM_MARGIN, 62):
+
+def create_paper_background(
+    settings: RenderSettings,
+    rng: random.Random,
+) -> Image.Image:
+    """
+    创建接近参考图片的米白色俄语作业本纸张。
+    """
+    image = Image.new(
+        "RGB",
+        (PAGE_WIDTH, PAGE_HEIGHT),
+        (247, 244, 235),
+    )
+
+    add_light_paper_texture(image, rng)
+    draw = ImageDraw.Draw(image)
+
+    if settings.paper_type == "横线纸":
+        # 顶部双横线
+        draw.line(
+            (55, 65, PAGE_WIDTH - 55, 65),
+            fill=(174, 184, 210),
+            width=2,
+        )
+        draw.line(
+            (55, 78, PAGE_WIDTH - 55, 78),
+            fill=(192, 200, 220),
+            width=1,
+        )
+
+        # 作业本横线
+        for y in range(
+            TOP_MARGIN,
+            PAGE_HEIGHT - BOTTOM_MARGIN,
+            settings.rule_spacing,
+        ):
             draw.line(
-                (80, y, PAGE_WIDTH - 80, y),
-                fill=(208, 220, 235),
+                (55, y, PAGE_WIDTH - 55, y),
+                fill=(167, 184, 218),
                 width=2,
             )
 
+        # 左侧红色竖线
+        red_line_x = LEFT_MARGIN + 48
+
         draw.line(
             (
-                LEFT_MARGIN - 25,
+                red_line_x,
                 70,
-                LEFT_MARGIN - 25,
+                red_line_x,
                 PAGE_HEIGHT - 70,
             ),
-            fill=(235, 175, 175),
+            fill=(204, 137, 140),
             width=2,
         )
 
-    elif paper_type == "方格纸":
-        spacing = 55
+    elif settings.paper_type == "方格纸":
+        spacing = settings.rule_spacing
 
-        for x in range(60, PAGE_WIDTH - 60, spacing):
+        for x in range(55, PAGE_WIDTH - 55, spacing):
             draw.line(
-                (x, 60, x, PAGE_HEIGHT - 60),
-                fill=(220, 227, 235),
+                (x, 55, x, PAGE_HEIGHT - 55),
+                fill=(205, 214, 230),
                 width=1,
             )
 
-        for y in range(60, PAGE_HEIGHT - 60, spacing):
+        for y in range(55, PAGE_HEIGHT - 55, spacing):
             draw.line(
-                (60, y, PAGE_WIDTH - 60, y),
-                fill=(220, 227, 235),
+                (55, y, PAGE_WIDTH - 55, y),
+                fill=(205, 214, 230),
                 width=1,
             )
 
@@ -250,11 +314,23 @@ def create_paper_background(
 
 
 # ============================================================
-# 自动换行与分页
+# 自动换行和分页
 # ============================================================
+def text_width(
+    text: str,
+    font: ImageFont.FreeTypeFont,
+) -> float:
+    measuring_image = Image.new(
+        "RGB",
+        (10, 10),
+        "white",
+    )
+    draw = ImageDraw.Draw(measuring_image)
+    return draw.textlength(text, font=font)
+
+
 def split_long_word(
     word: str,
-    draw: ImageDraw.ImageDraw,
     font: ImageFont.FreeTypeFont,
     max_width: int,
 ) -> list[str]:
@@ -264,7 +340,7 @@ def split_long_word(
     for char in word:
         candidate = current + char
 
-        if draw.textlength(candidate, font=font) <= max_width:
+        if text_width(candidate, font) <= max_width:
             current = candidate
         else:
             if current:
@@ -279,7 +355,6 @@ def split_long_word(
 
 def wrap_paragraph(
     paragraph: str,
-    draw: ImageDraw.ImageDraw,
     font: ImageFont.FreeTypeFont,
     max_width: int,
 ) -> list[str]:
@@ -291,9 +366,13 @@ def wrap_paragraph(
     current = ""
 
     for word in words:
-        candidate = word if not current else f"{current} {word}"
+        candidate = (
+            word
+            if not current
+            else f"{current} {word}"
+        )
 
-        if draw.textlength(candidate, font=font) <= max_width:
+        if text_width(candidate, font) <= max_width:
             current = candidate
             continue
 
@@ -301,13 +380,12 @@ def wrap_paragraph(
             lines.append(current)
             current = ""
 
-        if draw.textlength(word, font=font) <= max_width:
+        if text_width(word, font) <= max_width:
             current = word
             continue
 
         parts = split_long_word(
             word=word,
-            draw=draw,
             font=font,
             max_width=max_width,
         )
@@ -327,16 +405,12 @@ def wrap_text(
     font: ImageFont.FreeTypeFont,
     max_width: int,
 ) -> list[str]:
-    measuring_image = Image.new("RGB", (10, 10), "white")
-    draw = ImageDraw.Draw(measuring_image)
-
     all_lines: list[str] = []
 
     for paragraph in normalize_text(text).split("\n"):
         all_lines.extend(
             wrap_paragraph(
                 paragraph=paragraph,
-                draw=draw,
                 font=font,
                 max_width=max_width,
             )
@@ -347,28 +421,28 @@ def wrap_text(
 
 def paginate_lines(
     lines: list[str],
-    font_size: int,
-    line_spacing: int,
-    randomness: int,
+    settings: RenderSettings,
 ) -> list[list[str]]:
-    normal_height = font_size + line_spacing + 8 + randomness + 2
-    blank_height = normal_height // 2 + 10
-    available_height = PAGE_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN
+    available_height = (
+        PAGE_HEIGHT
+        - TOP_MARGIN
+        - BOTTOM_MARGIN
+    )
+
+    maximum_rows = max(
+        1,
+        available_height // settings.rule_spacing,
+    )
 
     pages: list[list[str]] = []
     current_page: list[str] = []
-    used_height = 0
 
     for line in lines:
-        line_height = blank_height if not line.strip() else normal_height
-
-        if current_page and used_height + line_height > available_height:
+        if len(current_page) >= maximum_rows:
             pages.append(current_page)
             current_page = []
-            used_height = 0
 
         current_page.append(line)
-        used_height += line_height
 
     if current_page or not pages:
         pages.append(current_page)
@@ -377,18 +451,21 @@ def paginate_lines(
 
 
 # ============================================================
-# 手写渲染
+# 手写字渲染
 # ============================================================
 def varied_ink_color(
     ink_name: str,
     rng: random.Random,
 ) -> tuple[int, int, int]:
+    """
+    参考图墨水比较稳定，所以颜色波动很小。
+    """
     if ink_name == "蓝色":
-        base = (36, 58, 115)
-        variation = 10
+        base = (42, 62, 112)
+        variation = 4
     else:
-        base = (32, 32, 32)
-        variation = 8
+        base = (39, 39, 38)
+        variation = 3
 
     return (
         clamp(base[0] + rng.randint(-variation, variation)),
@@ -401,13 +478,19 @@ def create_pressure_mask(
     text_mask: Image.Image,
     rng: random.Random,
 ) -> Image.Image:
+    """
+    模拟圆珠笔书写压力，但保持变化很小。
+    """
     width, height = text_mask.size
-    small_width = max(2, width // 30)
-    small_height = max(2, height // 12)
+
+    small_width = max(2, width // 35)
+    small_height = max(2, height // 14)
 
     pressure_pixels = bytes(
-        rng.randint(218, 255)
-        for _ in range(small_width * small_height)
+        rng.randint(238, 255)
+        for _ in range(
+            small_width * small_height
+        )
     )
 
     pressure = Image.frombytes(
@@ -419,17 +502,59 @@ def create_pressure_mask(
         Image.Resampling.BILINEAR,
     )
 
-    return ImageChops.multiply(text_mask, pressure)
+    return ImageChops.multiply(
+        text_mask,
+        pressure,
+    )
 
 
-def draw_handwritten_line(
-    page: Image.Image,
-    text: str,
-    x: int,
-    y: int,
+def shear_right(
+    image: Image.Image,
+    shear: float,
+) -> Image.Image:
+    """
+    让字形向右倾斜。
+
+    数值建议在 0.06～0.16 之间。
+    """
+    if shear <= 0:
+        return image
+
+    extra_width = int(
+        abs(shear) * image.height
+    )
+
+    new_width = image.width + extra_width
+
+    # 让字的上部向右倾斜
+    offset = -shear * image.height
+
+    return image.transform(
+        (new_width, image.height),
+        Image.Transform.AFFINE,
+        (
+            1,
+            shear,
+            offset,
+            0,
+            1,
+            0,
+        ),
+        resample=Image.Resampling.BICUBIC,
+    )
+
+
+def render_word_image(
+    word: str,
     settings: RenderSettings,
     rng: random.Random,
-) -> None:
+) -> tuple[Image.Image, int]:
+    """
+    单独渲染一个单词。
+
+    单词内部仍然保留字体连笔，
+    不同单词之间有细微大小和基线变化。
+    """
     scale = settings.quality_scale
 
     high_font = load_font(
@@ -437,24 +562,49 @@ def draw_handwritten_line(
         settings.font_size * scale,
     )
 
-    measuring_image = Image.new("L", (1, 1), 0)
-    measuring_draw = ImageDraw.Draw(measuring_image)
+    ascent, descent = high_font.getmetrics()
+    padding = 12 * scale
+
+    measuring_image = Image.new(
+        "L",
+        (1, 1),
+        0,
+    )
+    measuring_draw = ImageDraw.Draw(
+        measuring_image
+    )
 
     bbox = measuring_draw.textbbox(
         (0, 0),
-        text,
+        word,
         font=high_font,
+        anchor="ls",
     )
 
-    padding = 14 * scale
-    text_width = max(1, bbox[2] - bbox[0])
-    text_height = max(1, bbox[3] - bbox[1])
+    text_width_value = max(
+        1,
+        bbox[2] - bbox[0],
+    )
+
+    canvas_width = (
+        text_width_value
+        + padding * 2
+        + int(settings.slant * (ascent + descent))
+    )
+
+    canvas_height = (
+        ascent
+        + descent
+        + padding * 2
+    )
+
+    baseline_y = padding + ascent
 
     mask = Image.new(
         "L",
         (
-            text_width + padding * 2,
-            text_height + padding * 2,
+            max(1, canvas_width),
+            max(1, canvas_height),
         ),
         0,
     )
@@ -464,21 +614,32 @@ def draw_handwritten_line(
     mask_draw.text(
         (
             padding - bbox[0],
-            padding - bbox[1],
+            baseline_y,
         ),
-        text,
+        word,
         font=high_font,
         fill=255,
+        anchor="ls",
     )
 
+    # 只做极轻的边缘柔化
     mask = mask.filter(
-        ImageFilter.GaussianBlur(radius=0.12 * scale)
+        ImageFilter.GaussianBlur(
+            radius=0.045 * scale
+        )
     )
 
-    pressure_mask = create_pressure_mask(mask, rng)
-    ink_color = varied_ink_color(settings.ink_name, rng)
+    pressure_mask = create_pressure_mask(
+        mask,
+        rng,
+    )
 
-    line_image = Image.new(
+    ink_color = varied_ink_color(
+        settings.ink_name,
+        rng,
+    )
+
+    word_image = Image.new(
         "RGBA",
         mask.size,
         (
@@ -489,64 +650,161 @@ def draw_handwritten_line(
         ),
     )
 
-    line_image.putalpha(pressure_mask)
+    word_image.putalpha(pressure_mask)
 
+    # 很小的宽高变化
     width_change = rng.uniform(
-        0.994 - settings.randomness * 0.0015,
-        1.006 + settings.randomness * 0.0015,
+        0.997 - settings.randomness * 0.0007,
+        1.003 + settings.randomness * 0.0007,
     )
 
     height_change = rng.uniform(
-        0.997 - settings.randomness * 0.0008,
-        1.003 + settings.randomness * 0.0008,
+        0.999 - settings.randomness * 0.0004,
+        1.001 + settings.randomness * 0.0004,
     )
 
-    new_width = max(
+    resized_width = max(
         1,
-        int(line_image.width / scale * width_change),
+        int(
+            word_image.width
+            / scale
+            * width_change
+        ),
     )
 
-    new_height = max(
+    resized_height = max(
         1,
-        int(line_image.height / scale * height_change),
+        int(
+            word_image.height
+            / scale
+            * height_change
+        ),
     )
 
-    line_image = line_image.resize(
-        (new_width, new_height),
+    baseline_after_resize = int(
+        baseline_y
+        / scale
+        * height_change
+    )
+
+    word_image = word_image.resize(
+        (
+            resized_width,
+            resized_height,
+        ),
         Image.Resampling.LANCZOS,
     )
 
-    angle = rng.uniform(
-        -0.12 - settings.randomness * 0.025,
-        0.12 + settings.randomness * 0.025,
+    word_slant = max(
+        0.0,
+        settings.slant
+        + rng.uniform(-0.012, 0.012),
     )
 
-    line_image = line_image.rotate(
-        angle,
-        expand=True,
-        resample=Image.Resampling.BICUBIC,
+    word_image = shear_right(
+        word_image,
+        word_slant,
     )
 
-    paste_x = max(0, x + rng.randint(-1, 1))
-    paste_y = max(0, y + rng.randint(-1, 1))
+    return (
+        word_image,
+        baseline_after_resize,
+    )
 
-    max_allowed_width = PAGE_WIDTH - RIGHT_MARGIN - paste_x
 
-    if line_image.width > max_allowed_width and max_allowed_width > 10:
-        ratio = max_allowed_width / line_image.width
+def draw_handwritten_line(
+    page: Image.Image,
+    text: str,
+    baseline_y: int,
+    x_start: int,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    """
+    按单词绘制整行。
 
-        line_image = line_image.resize(
-            (
-                max_allowed_width,
-                max(1, int(line_image.height * ratio)),
-            ),
-            Image.Resampling.LANCZOS,
+    这样比整行一次性拉伸更自然，
+    又不会破坏单词内部的俄语连笔。
+    """
+    words = text.split()
+
+    if not words:
+        return
+
+    normal_font = load_font(
+        settings.font_path,
+        settings.font_size,
+    )
+
+    base_space = int(
+        text_width(" ", normal_font)
+    )
+
+    current_x = x_start
+
+    for word_index, word in enumerate(words):
+        word_image, word_baseline = (
+            render_word_image(
+                word=word,
+                settings=settings,
+                rng=rng,
+            )
         )
 
-    page.alpha_composite(
-        line_image,
-        (paste_x, paste_y),
-    )
+        word_y_shift = rng.randint(
+            -max(1, settings.randomness),
+            max(1, settings.randomness),
+        )
+
+        paste_y = (
+            baseline_y
+            - word_baseline
+            + word_y_shift
+        )
+
+        max_width = (
+            PAGE_WIDTH
+            - RIGHT_MARGIN
+            - current_x
+        )
+
+        if max_width <= 4:
+            break
+
+        if word_image.width > max_width:
+            ratio = max_width / word_image.width
+
+            word_image = word_image.resize(
+                (
+                    max_width,
+                    max(
+                        1,
+                        int(
+                            word_image.height
+                            * ratio
+                        ),
+                    ),
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+        page.alpha_composite(
+            word_image,
+            (
+                max(0, current_x),
+                max(0, paste_y),
+            ),
+        )
+
+        current_x += (
+            word_image.width
+            + base_space
+            + settings.word_spacing
+            + rng.randint(-1, 2)
+        )
+
+        if word_index == len(words) - 1:
+            break
 
 
 def render_single_page(
@@ -554,56 +812,59 @@ def render_single_page(
     settings: RenderSettings,
     page_number: int,
 ) -> Image.Image:
-    page_seed = settings.seed + page_number * 100_003
+    page_seed = (
+        settings.seed
+        + page_number * 100_003
+    )
+
     rng = random.Random(page_seed)
 
     image = create_paper_background(
-        settings.paper_type,
-        rng,
+        settings=settings,
+        rng=rng,
     )
 
-    line_height = settings.font_size + settings.line_spacing + 8
-    y = TOP_MARGIN
+    red_line_x = LEFT_MARGIN + 48
+    text_start_x = red_line_x + 20
+
     previous_was_blank = True
 
-    for line in page_lines:
+    for row_index, line in enumerate(page_lines):
+        rule_y = (
+            TOP_MARGIN
+            + row_index * settings.rule_spacing
+        )
+
         if not line.strip():
-            y += line_height // 2 + 10
             previous_was_blank = True
             continue
 
         paragraph_indent = (
-            rng.randint(18, 42)
+            rng.randint(8, 18)
             if previous_was_blank
             else 0
         )
 
-        x = (
-            LEFT_MARGIN
+        x_start = (
+            text_start_x
             + paragraph_indent
-            + rng.randint(
-                -settings.randomness * 2,
-                settings.randomness * 3,
-            )
+            + rng.randint(-1, 2)
         )
 
-        y_offset = rng.randint(
-            -settings.randomness,
-            settings.randomness + 1,
+        # 让字自然坐在横线上
+        baseline_y = (
+            rule_y
+            - 2
+            + rng.randint(-1, 1)
         )
 
         draw_handwritten_line(
             page=image,
             text=line,
-            x=x,
-            y=y + y_offset,
+            baseline_y=baseline_y,
+            x_start=x_start,
             settings=settings,
             rng=rng,
-        )
-
-        y += line_height + rng.randint(
-            -settings.randomness,
-            settings.randomness + 2,
         )
 
         previous_was_blank = False
@@ -620,11 +881,14 @@ def render_document(
         settings.font_size,
     )
 
+    red_line_x = LEFT_MARGIN + 48
+    text_start_x = red_line_x + 20
+
     max_text_width = (
         PAGE_WIDTH
-        - LEFT_MARGIN
         - RIGHT_MARGIN
-        - 90
+        - text_start_x
+        - 28
     )
 
     lines = wrap_text(
@@ -635,9 +899,7 @@ def render_document(
 
     pages_lines = paginate_lines(
         lines=lines,
-        font_size=settings.font_size,
-        line_spacing=settings.line_spacing,
-        randomness=settings.randomness,
+        settings=settings,
     )
 
     return [
@@ -646,14 +908,18 @@ def render_document(
             settings=settings,
             page_number=index,
         )
-        for index, page_lines in enumerate(pages_lines)
+        for index, page_lines in enumerate(
+            pages_lines
+        )
     ]
 
 
 # ============================================================
 # 导出
 # ============================================================
-def image_to_png_bytes(image: Image.Image) -> bytes:
+def image_to_png_bytes(
+    image: Image.Image,
+) -> bytes:
     buffer = BytesIO()
 
     image.save(
@@ -665,7 +931,9 @@ def image_to_png_bytes(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def pages_to_zip_bytes(pages: list[Image.Image]) -> bytes:
+def pages_to_zip_bytes(
+    pages: list[Image.Image],
+) -> bytes:
     buffer = BytesIO()
 
     with zipfile.ZipFile(
@@ -673,7 +941,10 @@ def pages_to_zip_bytes(pages: list[Image.Image]) -> bytes:
         mode="w",
         compression=zipfile.ZIP_DEFLATED,
     ) as archive:
-        for index, page in enumerate(pages, start=1):
+        for index, page in enumerate(
+            pages,
+            start=1,
+        ):
             archive.writestr(
                 f"page_{index:03d}.png",
                 image_to_png_bytes(page),
@@ -682,9 +953,15 @@ def pages_to_zip_bytes(pages: list[Image.Image]) -> bytes:
     return buffer.getvalue()
 
 
-def pages_to_pdf_bytes(pages: list[Image.Image]) -> bytes:
+def pages_to_pdf_bytes(
+    pages: list[Image.Image],
+) -> bytes:
     buffer = BytesIO()
-    rgb_pages = [page.convert("RGB") for page in pages]
+
+    rgb_pages = [
+        page.convert("RGB")
+        for page in pages
+    ]
 
     rgb_pages[0].save(
         buffer,
@@ -697,18 +974,26 @@ def pages_to_pdf_bytes(pages: list[Image.Image]) -> bytes:
     return buffer.getvalue()
 
 
-def save_result_to_session(pages: list[Image.Image]) -> None:
+def save_result_to_session(
+    pages: list[Image.Image],
+) -> None:
     st.session_state["generated_result"] = {
         "preview_pages": pages[:5],
         "page_count": len(pages),
-        "first_png": image_to_png_bytes(pages[0]),
-        "zip_bytes": pages_to_zip_bytes(pages),
-        "pdf_bytes": pages_to_pdf_bytes(pages),
+        "first_png": image_to_png_bytes(
+            pages[0]
+        ),
+        "zip_bytes": pages_to_zip_bytes(
+            pages
+        ),
+        "pdf_bytes": pages_to_pdf_bytes(
+            pages
+        ),
     }
 
 
 # ============================================================
-# Streamlit 界面
+# Streamlit 页面
 # ============================================================
 st.set_page_config(
     page_title="俄语手写图片生成器",
@@ -717,64 +1002,100 @@ st.set_page_config(
 )
 
 st.title("✍️ 俄语手写图片生成器")
-st.caption("支持俄语文字、TXT、DOCX 和文字型 PDF。")
+
+st.caption(
+    "作业本连笔风格：支持俄语文字、TXT、DOCX 和文字型 PDF。"
+)
 
 font_files = get_font_files()
 
 if not font_files:
     st.error(
-        "没有找到字体。请把支持俄语的 .ttf 或 .otf 手写字体，"
-        "复制到项目的 fonts 文件夹后刷新页面。"
+        "没有找到字体。请上传一个支持俄语的 "
+        ".ttf 或 .otf 手写字体。"
     )
 
     st.code(
-        "项目文件夹\n"
-        "├── app.py\n"
-        "└── fonts\n"
-        "    └── 你的俄语手写字体.ttf"
+        "推荐结构：\n"
+        "app.py\n"
+        "fonts/\n"
+        "    BadScript-Regular.ttf"
     )
 
     st.stop()
 
 
 with st.sidebar:
-    st.header("页面设置")
+    st.header("手写设置")
 
     selected_font_name = st.selectbox(
         "手写字体",
         options=list(font_files.keys()),
+        help=(
+            "想接近参考图，推荐使用 Bad Script，"
+            "其次是 Marck Script。"
+        ),
     )
 
     font_size = st.slider(
         "字体大小",
-        min_value=35,
-        max_value=90,
-        value=58,
+        min_value=36,
+        max_value=72,
+        value=48,
     )
 
     line_spacing = st.slider(
-        "行距",
-        min_value=5,
-        max_value=55,
-        value=22,
+        "横线间距",
+        min_value=4,
+        max_value=24,
+        value=10,
     )
 
     paper_type = st.selectbox(
         "纸张",
-        ["横线纸", "白纸", "方格纸"],
+        [
+            "横线纸",
+            "白纸",
+            "方格纸",
+        ],
     )
 
     ink_name = st.selectbox(
         "墨水",
-        ["蓝色", "黑色"],
+        [
+            "黑色",
+            "蓝色",
+        ],
     )
 
     randomness = st.slider(
         "自然随机程度",
         min_value=0,
-        max_value=6,
-        value=3,
-        help="建议选择 2～4。数值过高可能显得杂乱。",
+        max_value=4,
+        value=1,
+        help=(
+            "参考图的字比较整齐，"
+            "建议保持在 1～2。"
+        ),
+    )
+
+    slant = st.slider(
+        "右倾程度",
+        min_value=0.00,
+        max_value=0.20,
+        value=0.10,
+        step=0.01,
+        help=(
+            "Bad Script 本身已经有倾斜，"
+            "可以调到 0.05～0.10。"
+        ),
+    )
+
+    word_spacing = st.slider(
+        "单词间距",
+        min_value=-4,
+        max_value=12,
+        value=0,
     )
 
     seed = st.number_input(
@@ -783,7 +1104,10 @@ with st.sidebar:
         max_value=999_999,
         value=12_345,
         step=1,
-        help="修改数字可以生成另一种随机效果。",
+        help=(
+            "修改这个数字可以生成另一种"
+            "轻微不同的手写排列。"
+        ),
     )
 
 
@@ -796,9 +1120,11 @@ uploaded_file = st.file_uploader(
 
 if "editor_text" not in st.session_state:
     st.session_state["editor_text"] = (
-        "Привет! Это мой первый текст.\n\n"
-        "Сегодня я создаю приложение, которое превращает русский текст "
-        "в рукописное изображение."
+        "Это моя семья.\n"
+        "Это моя семья.\n"
+        "Зовут меня Мин. Я ученик сельской школы.\n"
+        "Вот мои родители. Это мой папа и моя мама.\n"
+        "Мы любим нашу маленькую семью."
     )
 
 
@@ -808,29 +1134,53 @@ if uploaded_file is not None:
         uploaded_file.size,
     )
 
-    if st.session_state.get("last_uploaded_file") != file_identity:
+    if (
+        st.session_state.get(
+            "last_uploaded_file"
+        )
+        != file_identity
+    ):
         try:
-            extracted_text = extract_uploaded_file(uploaded_file)
-            extracted_text = normalize_text(extracted_text)
+            extracted_text = (
+                extract_uploaded_file(
+                    uploaded_file
+                )
+            )
+
+            extracted_text = normalize_text(
+                extracted_text
+            )
 
             if extracted_text:
-                st.session_state["editor_text"] = extracted_text
-                st.session_state["last_uploaded_file"] = file_identity
-                st.success("文档文字提取成功，可以在下面继续修改。")
+                st.session_state[
+                    "editor_text"
+                ] = extracted_text
+
+                st.session_state[
+                    "last_uploaded_file"
+                ] = file_identity
+
+                st.success(
+                    "文字提取成功，"
+                    "可以在下面继续修改。"
+                )
             else:
                 st.warning(
-                    "没有从文件中提取到文字。这个 PDF 可能是扫描版图片，"
+                    "没有提取到文字。这个 PDF "
+                    "可能是扫描版图片，"
                     "当前版本暂未加入 OCR。"
                 )
 
         except Exception as error:
-            st.error(f"读取文件失败：{error}")
+            st.error(
+                f"读取文件失败：{error}"
+            )
 
 
 text = st.text_area(
     "俄语文字",
     key="editor_text",
-    height=320,
+    height=330,
 )
 
 
@@ -839,30 +1189,43 @@ st.subheader("2. 生成手写文档")
 generate_clicked = st.button(
     "生成手写文档",
     type="primary",
+    use_container_width=True,
 )
 
 if generate_clicked:
     if not text.strip():
-        st.warning("请先输入或上传俄语文字。")
+        st.warning(
+            "请先输入或上传俄语文字。"
+        )
     else:
         settings = RenderSettings(
-            font_path=str(font_files[selected_font_name]),
+            font_path=str(
+                font_files[
+                    selected_font_name
+                ]
+            ),
             font_size=font_size,
             line_spacing=line_spacing,
             paper_type=paper_type,
             ink_name=ink_name,
             randomness=randomness,
             seed=int(seed),
+            slant=float(slant),
+            word_spacing=word_spacing,
         )
 
         try:
-            with st.spinner("正在生成手写页面……"):
+            with st.spinner(
+                "正在生成作业本手写页面……"
+            ):
                 pages = render_document(
                     text=text,
                     settings=settings,
                 )
 
-                save_result_to_session(pages)
+                save_result_to_session(
+                    pages
+                )
 
             st.success(
                 f"生成成功，共 {len(pages)} 页。"
@@ -870,36 +1233,50 @@ if generate_clicked:
 
         except OSError:
             st.error(
-                "字体无法打开。请确认字体文件有效，并且支持西里尔字母。"
+                "字体无法打开。请确认字体文件"
+                "有效，并且支持西里尔字母。"
             )
 
         except MemoryError:
             st.error(
-                "文字太多，电脑内存不足。请减少文字数量后分批生成。"
+                "文字太多，电脑内存不足。"
+                "请减少文字后分批生成。"
             )
 
         except Exception as error:
             st.exception(error)
 
 
-result = st.session_state.get("generated_result")
+result = st.session_state.get(
+    "generated_result"
+)
 
 if result:
     st.subheader("3. 预览")
 
-    preview_pages = result["preview_pages"]
+    preview_pages = result[
+        "preview_pages"
+    ]
 
-    for index, page in enumerate(preview_pages, start=1):
+    for index, page in enumerate(
+        preview_pages,
+        start=1,
+    ):
         st.image(
             page,
             caption=f"第 {index} 页",
             use_container_width=True,
         )
 
-    if result["page_count"] > len(preview_pages):
+    if (
+        result["page_count"]
+        > len(preview_pages)
+    ):
         st.info(
-            f"网页只预览前 {len(preview_pages)} 页。"
-            f"完整的 {result['page_count']} 页可以下载为 ZIP 或 PDF。"
+            f"网页只预览前 "
+            f"{len(preview_pages)} 页。"
+            f"全部 {result['page_count']} 页"
+            f"可以下载为 ZIP 或 PDF。"
         )
 
     st.subheader("4. 下载")
@@ -910,7 +1287,10 @@ if result:
         st.download_button(
             "下载第一页 PNG",
             data=result["first_png"],
-            file_name="russian_handwriting_page_001.png",
+            file_name=(
+                "russian_handwriting_"
+                "page_001.png"
+            ),
             mime="image/png",
             use_container_width=True,
         )
@@ -919,7 +1299,10 @@ if result:
         st.download_button(
             "下载全部 PNG（ZIP）",
             data=result["zip_bytes"],
-            file_name="russian_handwriting_pages.zip",
+            file_name=(
+                "russian_handwriting_"
+                "pages.zip"
+            ),
             mime="application/zip",
             use_container_width=True,
         )
@@ -928,7 +1311,10 @@ if result:
         st.download_button(
             "下载全部页面 PDF",
             data=result["pdf_bytes"],
-            file_name="russian_handwriting_document.pdf",
+            file_name=(
+                "russian_handwriting_"
+                "document.pdf"
+            ),
             mime="application/pdf",
             use_container_width=True,
         )
