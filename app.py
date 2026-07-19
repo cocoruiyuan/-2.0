@@ -4175,6 +4175,343 @@ st.markdown(
 
 
 
+# ============================================================
+# 最终纯净主题：统一所有控件颜色
+# ============================================================
+st.markdown(
+    """
+    <style>
+    /* ---------- 全局控件文字 ---------- */
+    .stApp,
+    .stApp p,
+    .stApp label,
+    .stApp span {
+        text-rendering: optimizeLegibility;
+    }
+
+    /* ---------- 滑块轨道 ---------- */
+    [data-testid="stSlider"] {
+        padding-top: 0.15rem !important;
+        padding-bottom: 0.55rem !important;
+    }
+
+    [data-testid="stSlider"] div[data-baseweb="slider"] {
+        background: transparent !important;
+    }
+
+    /* 未选中的轨道 */
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child,
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(1) {
+        background: #e5eaf6 !important;
+        border-radius: 999px !important;
+        box-shadow: none !important;
+    }
+
+    /* 已选中的轨道 */
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {
+        background: linear-gradient(
+            90deg,
+            #5575f5 0%,
+            #8060ec 100%
+        ) !important;
+        border-radius: 999px !important;
+        box-shadow: none !important;
+    }
+
+    /* 兼容不同 Streamlit 版本的轨道元素 */
+    [data-testid="stSlider"] div[role="presentation"] {
+        border-radius: 999px !important;
+    }
+
+    [data-testid="stSlider"] [role="slider"] {
+        width: 17px !important;
+        height: 17px !important;
+        background: #ffffff !important;
+        border: 3px solid #5d72ef !important;
+        border-radius: 999px !important;
+        box-shadow:
+            0 2px 7px rgba(67, 82, 190, 0.22),
+            0 0 0 3px rgba(83, 109, 245, 0.06) !important;
+    }
+
+    [data-testid="stSlider"] [role="slider"]:hover,
+    [data-testid="stSlider"] [role="slider"]:focus {
+        border-color: #8059e9 !important;
+        box-shadow:
+            0 3px 9px rgba(67, 82, 190, 0.25),
+            0 0 0 5px rgba(112, 91, 234, 0.10) !important;
+    }
+
+    [data-testid="stSlider"] [data-testid="stTickBar"] {
+        color: #6f7ea5 !important;
+    }
+
+    /* ---------- 展开面板 ---------- */
+    section[data-testid="stSidebar"] [data-testid="stExpander"],
+    [data-testid="stExpander"] {
+        border: 1px solid #dfe5f3 !important;
+        border-radius: 14px !important;
+        background: #fafbff !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+    }
+
+    [data-testid="stExpander"] details {
+        background: transparent !important;
+    }
+
+    [data-testid="stExpander"] summary {
+        min-height: 48px !important;
+        padding: 0.65rem 0.85rem !important;
+        color: #31477e !important;
+        background: linear-gradient(
+            180deg,
+            #fbfcff 0%,
+            #f3f6ff 100%
+        ) !important;
+        border: 0 !important;
+        border-radius: 13px !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stExpander"] summary:hover {
+        color: #4059be !important;
+        background: linear-gradient(
+            180deg,
+            #f4f7ff 0%,
+            #ebf0ff 100%
+        ) !important;
+    }
+
+    [data-testid="stExpander"] details[open] > summary {
+        color: #3f55b8 !important;
+        background: linear-gradient(
+            180deg,
+            #f0f4ff 0%,
+            #e9efff 100%
+        ) !important;
+        border-bottom: 1px solid #dfe5f3 !important;
+        border-radius: 13px 13px 0 0 !important;
+    }
+
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span {
+        color: inherit !important;
+        font-weight: 760 !important;
+    }
+
+    [data-testid="stExpander"] summary svg {
+        color: #7182b3 !important;
+        fill: #7182b3 !important;
+    }
+
+    [data-testid="stExpander"] details[open] > summary svg {
+        color: #596ed8 !important;
+        fill: #596ed8 !important;
+    }
+
+    [data-testid="stExpander"] details > div {
+        color: #304575 !important;
+        background: #ffffff !important;
+    }
+
+    /* ---------- 文件上传区域文字 ---------- */
+    [data-testid="stFileUploaderDropzone"] {
+        color: #536895 !important;
+        background: linear-gradient(
+            145deg,
+            #fafcff 0%,
+            #f7f8ff 100%
+        ) !important;
+        border: 1.5px dashed #bdc9ed !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"]:hover {
+        color: #435dbd !important;
+        background: linear-gradient(
+            145deg,
+            #f5f8ff 0%,
+            #f8f5ff 100%
+        ) !important;
+        border-color: #8091ec !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] p,
+    [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzoneInstructions"],
+    [data-testid="stFileUploaderDropzoneInstructions"] p,
+    [data-testid="stFileUploaderDropzoneInstructions"] span {
+        color: #69799f !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] svg {
+        color: #687deb !important;
+        fill: #687deb !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button,
+    [data-testid="stFileUploader"] button,
+    [data-testid="stFileUploaderDropzone"] [data-testid="baseButton-secondary"],
+    [data-testid="stFileUploader"] [data-testid="baseButton-secondary"] {
+        min-height: 40px !important;
+        color: #435cc1 !important;
+        background: linear-gradient(
+            180deg,
+            #f4f7ff 0%,
+            #e9efff 100%
+        ) !important;
+        border: 1px solid #d2dcf7 !important;
+        border-radius: 11px !important;
+        box-shadow: 0 4px 12px rgba(69, 88, 177, 0.07) !important;
+        font-weight: 760 !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button:hover,
+    [data-testid="stFileUploader"] button:hover,
+    [data-testid="stFileUploaderDropzone"] [data-testid="baseButton-secondary"]:hover,
+    [data-testid="stFileUploader"] [data-testid="baseButton-secondary"]:hover {
+        color: #354eaf !important;
+        background: linear-gradient(
+            180deg,
+            #edf2ff 0%,
+            #dfe8ff 100%
+        ) !important;
+        border-color: #bcc9f1 !important;
+        box-shadow: 0 6px 15px rgba(69, 88, 177, 0.11) !important;
+    }
+
+    [data-testid="stFileUploaderFile"] {
+        color: #3d5288 !important;
+        background: #f7f9ff !important;
+        border: 1px solid #e0e6f4 !important;
+        border-radius: 11px !important;
+    }
+
+    [data-testid="stFileUploaderFile"] p,
+    [data-testid="stFileUploaderFile"] span {
+        color: #3d5288 !important;
+    }
+
+    /* ---------- 下载按钮 ---------- */
+    .stDownloadButton > button,
+    [data-testid="stDownloadButton"] > button {
+        min-height: 43px !important;
+        color: #3f57ad !important;
+        background: linear-gradient(
+            180deg,
+            #f7f9ff 0%,
+            #eaf0ff 100%
+        ) !important;
+        border: 1px solid #d4ddf5 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 5px 13px rgba(64, 83, 171, 0.07) !important;
+        font-weight: 770 !important;
+        transition:
+            transform 0.16s ease,
+            background 0.16s ease,
+            border-color 0.16s ease,
+            box-shadow 0.16s ease !important;
+    }
+
+    .stDownloadButton > button:hover,
+    [data-testid="stDownloadButton"] > button:hover {
+        color: #ffffff !important;
+        background: linear-gradient(
+            105deg,
+            #5575f5 0%,
+            #8d58e9 100%
+        ) !important;
+        border-color: transparent !important;
+        box-shadow: 0 9px 20px rgba(77, 78, 211, 0.20) !important;
+        transform: translateY(-1px);
+    }
+
+    .stDownloadButton > button:focus,
+    [data-testid="stDownloadButton"] > button:focus {
+        color: #3f57ad !important;
+        border-color: #8697ec !important;
+        box-shadow: 0 0 0 4px rgba(83, 109, 245, 0.11) !important;
+    }
+
+    .stDownloadButton > button:hover svg,
+    .stDownloadButton > button:hover span,
+    [data-testid="stDownloadButton"] > button:hover svg,
+    [data-testid="stDownloadButton"] > button:hover span {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+    }
+
+    /* ---------- 普通按钮 ---------- */
+    .stButton > button:not([kind="primary"]) {
+        color: #435a9d !important;
+        background: linear-gradient(
+            180deg,
+            #f8faff 0%,
+            #eef3ff 100%
+        ) !important;
+        border: 1px solid #d7e0f4 !important;
+        box-shadow: none !important;
+    }
+
+    .stButton > button:not([kind="primary"]):hover {
+        color: #344d9b !important;
+        background: linear-gradient(
+            180deg,
+            #eff3ff 0%,
+            #e4ebff 100%
+        ) !important;
+        border-color: #c5d0ef !important;
+    }
+
+    /* ---------- 复选框与开关 ---------- */
+    [data-testid="stCheckbox"] label {
+        color: #344a7d !important;
+    }
+
+    [data-testid="stCheckbox"] svg {
+        color: #5c72ed !important;
+        fill: #5c72ed !important;
+    }
+
+    /* ---------- 数字输入框按钮 ---------- */
+    [data-testid="stNumberInput"] button {
+        color: #5e70a5 !important;
+        background: #f2f5ff !important;
+        border: 0 !important;
+    }
+
+    [data-testid="stNumberInput"] button:hover {
+        color: #4059bb !important;
+        background: #e7edff !important;
+    }
+
+    /* ---------- 控件标签和帮助图标 ---------- */
+    [data-testid="stWidgetLabel"] p {
+        color: #304574 !important;
+        font-weight: 650 !important;
+    }
+
+    [data-testid="stTooltipIcon"] svg {
+        color: #a2aecb !important;
+        fill: #a2aecb !important;
+    }
+
+    /* ---------- 防止浏览器或 Streamlit 注入深色焦点边框 ---------- */
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    summary:focus-visible,
+    [role="slider"]:focus-visible,
+    [data-baseweb="select"] *:focus-visible {
+        outline: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 font_files = get_font_files()
 
 if not font_files:
