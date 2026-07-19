@@ -3607,13 +3607,13 @@ st.markdown(
     :root {
         --primary-color: #536df5;
         --primary: #536df5;
-        --primary-dark: #3f51d9;
+        --primary-dark: #415ee6;
         --purple: #9255e9;
         --ink: #12275b;
         --muted: #7280a1;
         --border: #dfe5f3;
         --soft-border: rgba(88, 109, 182, 0.14);
-        --surface: rgba(255, 255, 255, 0.94);
+        --surface: rgba(255, 255, 255, 0.96);
         --shadow: 0 14px 38px rgba(46, 66, 128, 0.09);
     }
 
@@ -3645,7 +3645,6 @@ st.markdown(
         padding-bottom: 2.7rem;
     }
 
-    /* ---------- 侧边栏 ---------- */
     section[data-testid="stSidebar"] {
         width: 334px !important;
         min-width: 334px !important;
@@ -3710,35 +3709,47 @@ st.markdown(
         font-weight: 850;
     }
 
-    /* ---------- 彻底移除控件黑边 ---------- */
-    section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
-    section[data-testid="stSidebar"] div[data-baseweb="select"] > div > div,
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="select"] > div > div {
-        color: #263a6c !important;
-        background-color: #ffffff !important;
-        border-color: transparent !important;
+    /* 下拉框：去黑边、去黑底 */
+    [data-baseweb="select"] {
+        width: 100%;
     }
 
     div[data-baseweb="select"] > div {
-        min-height: 43px;
+        min-height: 45px !important;
         border: 1px solid var(--border) !important;
-        border-radius: 11px !important;
+        border-radius: 13px !important;
+        background: #ffffff !important;
         box-shadow: none !important;
         overflow: hidden !important;
     }
 
     div[data-baseweb="select"] > div:hover {
-        border-color: #bdc9ea !important;
+        border-color: #c3cef0 !important;
+        background: #ffffff !important;
     }
 
     div[data-baseweb="select"] > div:focus-within {
         border-color: #7184ec !important;
         box-shadow: 0 0 0 3px rgba(83, 109, 245, 0.11) !important;
+        background: #ffffff !important;
+    }
+
+    div[data-baseweb="select"] > div > div,
+    div[data-baseweb="select"] > div > div > div,
+    div[data-baseweb="select"] > div span,
+    div[data-baseweb="select"] > div input {
+        background: transparent !important;
+        color: #263a6c !important;
+    }
+
+    div[data-baseweb="select"] > div > div:last-child {
+        background: linear-gradient(180deg, #f7f9ff, #eef3ff) !important;
+        border-left: 1px solid #e1e7f5 !important;
     }
 
     div[data-baseweb="select"] svg {
-        fill: #6879a4 !important;
+        fill: #6f7fa8 !important;
+        color: #6f7fa8 !important;
     }
 
     div[role="listbox"] {
@@ -3768,7 +3779,7 @@ st.markdown(
         caret-color: #536df5 !important;
         background: #ffffff !important;
         border: 1px solid var(--border) !important;
-        border-radius: 12px !important;
+        border-radius: 13px !important;
         outline: none !important;
         box-shadow: none !important;
     }
@@ -3776,7 +3787,7 @@ st.markdown(
     [data-testid="stTextArea"] textarea:hover,
     [data-testid="stTextInput"] input:hover,
     [data-testid="stNumberInput"] input:hover {
-        border-color: #bdc9ea !important;
+        border-color: #c3cef0 !important;
     }
 
     [data-testid="stTextArea"] textarea:focus,
@@ -3791,6 +3802,7 @@ st.markdown(
     button:focus,
     button:active {
         outline: none !important;
+        box-shadow: none !important;
     }
 
     [data-testid="stFileUploaderDropzone"] {
@@ -3806,24 +3818,19 @@ st.markdown(
 
     [data-testid="stFileUploaderDropzone"] button,
     [data-testid="stFileUploader"] button {
-        color: #415bc5 !important;
-        background: #eef2ff !important;
-        border: 1px solid #d5def8 !important;
-        border-radius: 10px !important;
+        color: #4762cb !important;
+        background: linear-gradient(180deg, #f3f6ff, #eaf0ff) !important;
+        border: 1px solid #d7dff6 !important;
+        border-radius: 11px !important;
         box-shadow: none !important;
-        font-weight: 750 !important;
+        font-weight: 760 !important;
     }
 
     [data-testid="stFileUploaderDropzone"] button:hover,
     [data-testid="stFileUploader"] button:hover {
-        color: #334bb2 !important;
-        background: #e5ebff !important;
-        border-color: #bcc9f4 !important;
-    }
-
-    [data-testid="stSlider"] {
-        padding-top: 2px;
-        padding-bottom: 2px;
+        color: #3550bb !important;
+        background: linear-gradient(180deg, #edf2ff, #e1eaff) !important;
+        border-color: #c7d2f3 !important;
     }
 
     [data-testid="stSlider"] [role="slider"] {
@@ -3844,7 +3851,6 @@ st.markdown(
         overflow: hidden;
     }
 
-    /* ---------- 页头 ---------- */
     .hero-shell {
         position: relative;
         overflow: hidden;
@@ -3856,8 +3862,7 @@ st.markdown(
         margin-bottom: 14px;
         border: 1px solid var(--soft-border);
         border-radius: 21px;
-        background:
-            linear-gradient(118deg, rgba(255,255,255,0.98), rgba(247,248,255,0.94));
+        background: linear-gradient(118deg, rgba(255,255,255,0.98), rgba(247,248,255,0.94));
         box-shadow: var(--shadow);
     }
 
@@ -3915,7 +3920,6 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* ---------- 步骤提示 ---------- */
     .steps-row {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3958,7 +3962,6 @@ st.markdown(
         font-size: 11px;
     }
 
-    /* ---------- 主面板 ---------- */
     [data-testid="stVerticalBlockBorderWrapper"] {
         border: 1px solid var(--soft-border) !important;
         border-radius: 19px !important;
@@ -4004,13 +4007,23 @@ st.markdown(
     [data-testid="stTextArea"] textarea {
         min-height: 285px !important;
         line-height: 1.62;
+        resize: vertical !important;
     }
 
     .stButton > button {
         min-height: 44px;
         border-radius: 12px !important;
         font-weight: 780 !important;
+        color: #425a97 !important;
+        background: linear-gradient(180deg, #f8faff, #eef3ff) !important;
+        border: 1px solid #d9e1f5 !important;
         box-shadow: none !important;
+    }
+
+    .stButton > button:hover {
+        color: #30498a !important;
+        background: linear-gradient(180deg, #eef3ff, #e4ecff) !important;
+        border-color: #c5d1f0 !important;
     }
 
     .stButton > button[kind="primary"] {
@@ -4024,26 +4037,14 @@ st.markdown(
     .stButton > button[kind="primary"]:hover {
         transform: translateY(-1px);
         box-shadow: 0 14px 27px rgba(75, 74, 220, 0.27) !important;
-    }
-
-    .stButton > button[kind="secondary"],
-    .stButton > button:not([kind="primary"]) {
-        color: #435a94 !important;
-        background: #f7f9ff !important;
-        border: 1px solid #dce3f3 !important;
-    }
-
-    .stButton > button[kind="secondary"]:hover,
-    .stButton > button:not([kind="primary"]):hover {
-        color: #334a86 !important;
-        background: #eef2ff !important;
-        border-color: #c8d2ef !important;
+        color: #ffffff !important;
+        background: linear-gradient(105deg, #406cf0, #9145e3) !important;
     }
 
     .stDownloadButton > button {
         min-height: 42px;
         color: #354d88 !important;
-        background: #f8f9fe !important;
+        background: linear-gradient(180deg, #fafcff, #eef3ff) !important;
         border: 1px solid #dce3f3 !important;
         border-radius: 11px !important;
         font-weight: 750 !important;
@@ -4051,7 +4052,7 @@ st.markdown(
     }
 
     .stDownloadButton > button:hover {
-        background: #eef2ff !important;
+        background: linear-gradient(180deg, #edf2ff, #e2eaff) !important;
         border-color: #c7d1ef !important;
     }
 
@@ -4171,6 +4172,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 
 
 font_files = get_font_files()
