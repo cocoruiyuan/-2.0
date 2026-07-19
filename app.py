@@ -1220,6 +1220,469 @@ def render_word_image(
     )
 
 
+def warp_cursive_line(
+    image: Image.Image,
+    amplitude: float,
+    rng: random.Random,
+) -> Image.Image:
+    """
+    对整行文字进行非常轻微的纵向曲线变形。
+
+    与逐词上下移动不同，这种方式不会切断单词内部的连笔，
+    更接近参考图片中连续、平稳的俄语草写。
+    """
+    if amplitude <= 0.05 or image.width < 20:
+        return image
+
+    width, height = image.size
+    segment_count = max(
+        8,
+        min(36, width // 45),
+    )
+
+    phase = rng.uniform(0.0, math.tau)
+    frequency = rng.uniform(0.75, 1.25)
+    drift = rng.uniform(-0.18, 0.18)
+
+    boundaries = [
+        round(index * width / segment_count)
+        for index in range(segment_count + 1)
+    ]
+
+    offsets: list[float] = []
+
+    for index in range(segment_count + 1):
+        progress = index / segment_count
+
+        sine_offset = (
+            math.sin(
+                phase
+                + progress
+                * math.tau
+                * frequency
+            )
+            * amplitude
+        )
+
+        drift_offset = (
+            drift
+            * amplitude
+            * (progress - 0.5)
+        )
+
+        offsets.append(
+            sine_offset + drift_offset
+        )
+
+    mesh = []
+
+    for index in range(segment_count):
+        x0 = boundaries[index]
+        x1 = boundaries[index + 1]
+
+        if x1 <= x0:
+            continue
+
+        left_offset = offsets[index]
+        right_offset = offsets[index + 1]
+
+        mesh.append(
+            (
+                (x0, 0, x1, height),
+                (
+                    x0,
+                    -left_offset,
+                    x0,
+                    height - left_offset,
+                    x1,
+                    height - right_offset,
+                    x1,
+                    -right_offset,
+                ),
+            )
+        )
+
+    return image.transform(
+        image.size,
+        Image.Transform.MESH,
+        mesh,
+        resample=Image.Resampling.BICUBIC,
+    )
+
+
+def render_cursive_line_image(
+    text: str,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> tuple[
+    Image.Image,
+    int,
+    tuple[int, int, int],
+    int,
+]:
+    """
+    把整行文字一次性绘制。
+
+    关键改进：
+    1. 整行使用同一个字体排版上下文；
+    2. 启用 calt、liga、clig、kern；
+    3. 轻微闭合字母间的小断口；
+    4. 整行统一右倾、压缩和基线曲线。
+
+    这比逐个单词单独生成更容易保留俄语草写的连贯感。
+    """
+    scale = settings.quality_scale
+
+    high_font = load_font(
+        settings.font_path,
+        settings.font_size * scale,
+    )
+
+    ascent, descent = high_font.getmetrics()
+    padding = 20 * scale
+    baseline_high = padding + ascent
+
+    measuring_image = Image.new(
+        "L",
+        (1, 1),
+        0,
+    )
+    measuring_draw = ImageDraw.Draw(
+        measuring_image
+    )
+
+    try:
+        bbox = measuring_draw.textbbox(
+            (0, 0),
+            text,
+            font=high_font,
+            anchor="ls",
+            features=[
+                "calt",
+                "liga",
+                "clig",
+                "kern",
+            ],
+        )
+    except Exception:
+        bbox = measuring_draw.textbbox(
+            (0, 0),
+            text,
+            font=high_font,
+            anchor="ls",
+        )
+
+    content_width = max(
+        1,
+        bbox[2] - bbox[0],
+    )
+
+    canvas_width = (
+        content_width
+        + padding * 2
+        + int(
+            settings.slant
+            * (ascent + descent)
+        )
+    )
+
+    canvas_height = (
+        ascent
+        + descent
+        + padding * 2
+    )
+
+    mask = Image.new(
+        "L",
+        (
+            max(1, canvas_width),
+            max(1, canvas_height),
+        ),
+        0,
+    )
+
+    mask_draw = ImageDraw.Draw(mask)
+
+    draw_text_with_cursive_features(
+        mask_draw,
+        (
+            padding - bbox[0],
+            baseline_high,
+        ),
+        text,
+        high_font,
+        255,
+        anchor="ls",
+    )
+
+    # 在三倍分辨率下只增加极薄的一层。
+    # 它会闭合字体中很小的连接断口，但不会明显加粗成黑体。
+    if settings.connection_strength > 0.05:
+        expanded_mask = mask.filter(
+            ImageFilter.MaxFilter(3)
+        )
+
+        bridge_amount = min(
+            0.18,
+            settings.connection_strength
+            * 0.15,
+        )
+
+        mask = Image.blend(
+            mask,
+            expanded_mask,
+            bridge_amount,
+        )
+
+    mask = mask.filter(
+        ImageFilter.GaussianBlur(
+            radius=0.035 * scale
+        )
+    )
+
+    pressure_mask = create_pressure_mask(
+        mask,
+        rng,
+    )
+
+    ink_color = varied_ink_color(
+        settings.ink_name,
+        rng,
+    )
+
+    line_alpha = rng.randint(229, 248)
+
+    line_image = Image.new(
+        "RGBA",
+        mask.size,
+        (
+            ink_color[0],
+            ink_color[1],
+            ink_color[2],
+            0,
+        ),
+    )
+
+    line_image.putalpha(
+        pressure_mask
+    )
+
+    space_count = text.count(" ")
+
+    # 参考图中的字比较紧凑。
+    # 连笔强度越高，整行只做很轻微的横向压缩。
+    width_factor = (
+        1.0
+        - settings.connection_strength * 0.026
+        + rng.uniform(-0.003, 0.003)
+    )
+
+    target_width = int(
+        line_image.width
+        / scale
+        * width_factor
+        + settings.word_spacing
+        * space_count
+    )
+
+    height_factor = rng.uniform(
+        0.998
+        - settings.randomness * 0.0005,
+        1.002
+        + settings.randomness * 0.0005,
+    )
+
+    target_height = int(
+        line_image.height
+        / scale
+        * height_factor
+    )
+
+    target_width = max(
+        1,
+        target_width,
+    )
+
+    target_height = max(
+        1,
+        target_height,
+    )
+
+    baseline_after_resize = int(
+        baseline_high
+        / scale
+        * height_factor
+    )
+
+    line_image = line_image.resize(
+        (
+            target_width,
+            target_height,
+        ),
+        Image.Resampling.LANCZOS,
+    )
+
+    # 参考图片中的右倾是统一的，不应每个单词倾斜方向不同。
+    effective_slant = max(
+        0.0,
+        settings.slant
+        + settings.connection_strength
+        * 0.012
+        + rng.uniform(-0.006, 0.006),
+    )
+
+    line_image = shear_right(
+        line_image,
+        effective_slant,
+    )
+
+    # 整行一起起伏，保持单词内部笔画连续。
+    line_image = warp_cursive_line(
+        line_image,
+        amplitude=(
+            settings.baseline_wave
+            * 0.58
+        ),
+        rng=rng,
+    )
+
+    rotation_angle = rng.uniform(
+        -0.035
+        - settings.randomness * 0.018,
+        0.035
+        + settings.randomness * 0.018,
+    )
+
+    old_height = line_image.height
+
+    line_image = line_image.rotate(
+        rotation_angle,
+        expand=True,
+        resample=Image.Resampling.BICUBIC,
+    )
+
+    baseline_after_resize += (
+        line_image.height - old_height
+    ) // 2
+
+    alpha_mask = line_image.getchannel(
+        "A"
+    ).point(
+        lambda pixel: min(
+            255,
+            max(
+                0,
+                int(
+                    pixel
+                    * line_alpha
+                    / 255
+                ),
+            ),
+        )
+    )
+
+    line_image.putalpha(
+        alpha_mask
+    )
+
+    # 裁掉透明边缘，让定位和换行更加准确。
+    visible_bbox = (
+        line_image
+        .getchannel("A")
+        .getbbox()
+    )
+
+    if visible_bbox is not None:
+        baseline_after_resize -= (
+            visible_bbox[1]
+        )
+
+        line_image = line_image.crop(
+            visible_bbox
+        )
+
+    return (
+        line_image,
+        baseline_after_resize,
+        ink_color,
+        line_alpha,
+    )
+
+
+def approximate_word_positions(
+    text: str,
+    x_start: int,
+    rendered_width: int,
+    font: ImageFont.FreeTypeFont,
+) -> list[tuple[str, int, int]]:
+    """
+    估算整行渲染后各单词的位置，用于添加涂改痕迹。
+
+    这里只影响涂改位置，不影响主体文字连笔。
+    """
+    raw_width = max(
+        1.0,
+        text_width(text, font),
+    )
+
+    width_scale = (
+        rendered_width / raw_width
+    )
+
+    positions: list[
+        tuple[str, int, int]
+    ] = []
+
+    search_from = 0
+
+    for word in text.split():
+        word_index = text.find(
+            word,
+            search_from,
+        )
+
+        if word_index < 0:
+            continue
+
+        prefix = text[:word_index]
+
+        word_left = (
+            x_start
+            + round(
+                text_width(
+                    prefix,
+                    font,
+                )
+                * width_scale
+            )
+        )
+
+        word_width = max(
+            8,
+            round(
+                text_width(
+                    word,
+                    font,
+                )
+                * width_scale
+            ),
+        )
+
+        positions.append(
+            (
+                word,
+                word_left,
+                word_width,
+            )
+        )
+
+        search_from = (
+            word_index + len(word)
+        )
+
+    return positions
+
+
 def draw_handwritten_line(
     page: Image.Image,
     text: str,
@@ -1229,209 +1692,145 @@ def draw_handwritten_line(
     rng: random.Random,
 ) -> int:
     """
-    返回该行结束位置，供句尾收笔使用。
-    """
-    words = text.split()
+    整行一次性绘制，主要模拟参考图中的俄语连笔。
 
-    if not words:
+    单词内部由字体真正连接；
+    单词之间保留自然空格，不再额外画生硬的连接线。
+    """
+    if not text.strip():
         return x_start
 
+    (
+        line_image,
+        line_baseline,
+        ink_color,
+        _,
+    ) = render_cursive_line_image(
+        text=text,
+        settings=settings,
+        rng=rng,
+    )
+
+    paste_y = (
+        baseline_y
+        - line_baseline
+    )
+
+    max_allowed_width = (
+        PAGE_WIDTH
+        - RIGHT_MARGIN
+        - x_start
+    )
+
+    if (
+        line_image.width
+        > max_allowed_width
+        and max_allowed_width > 10
+    ):
+        resize_ratio = (
+            max_allowed_width
+            / line_image.width
+        )
+
+        old_height = (
+            line_image.height
+        )
+
+        line_image = line_image.resize(
+            (
+                max_allowed_width,
+                max(
+                    1,
+                    round(
+                        old_height
+                        * resize_ratio
+                    ),
+                ),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+
+        line_baseline = round(
+            line_baseline
+            * resize_ratio
+        )
+
+        paste_y = (
+            baseline_y
+            - line_baseline
+        )
+
+    draw_entry_stroke(
+        page=page,
+        x=x_start,
+        baseline_y=baseline_y,
+        color=ink_color,
+        strength=(
+            settings.connection_strength
+        ),
+        rng=rng,
+    )
+
+    page.alpha_composite(
+        line_image,
+        (
+            max(0, x_start),
+            max(0, paste_y),
+        ),
+    )
+
+    # 主体整行已经完成，再按估算位置添加少量涂改。
     normal_font = load_font(
         settings.font_path,
         settings.font_size,
     )
 
-    base_space = int(
-        text_width(" ", normal_font)
+    word_positions = (
+        approximate_word_positions(
+            text=text,
+            x_start=x_start,
+            rendered_width=line_image.width,
+            font=normal_font,
+        )
     )
 
-    current_x = x_start
-    previous_end_y: int | None = None
-    previous_tail_x: int | None = None
-    last_ink_color = varied_ink_color(
-        settings.ink_name,
-        rng,
-    )
-
-    phase = rng.uniform(0.0, math.tau)
-    slow_drift = rng.uniform(-0.16, 0.16)
-
-    for word_index, word in enumerate(words):
-        (
-            word_image,
-            word_baseline,
-            ink_color,
-            word_alpha,
-        ) = render_word_image(
-            word=word,
-            settings=settings,
-            rng=rng,
-        )
-
-        wave_shift = (
-            math.sin(
-                phase
-                + word_index * 0.82
-            )
-            * settings.baseline_wave
-        )
-
-        drift_shift = (
-            slow_drift
-            * word_index
-            * min(
-                1.0,
-                settings.baseline_wave / 2.0,
-            )
-        )
-
-        random_shift = rng.randint(
-            -max(1, settings.randomness),
-            max(1, settings.randomness),
-        )
-
-        word_baseline_y = round(
-            baseline_y
-            + wave_shift
-            + drift_shift
-            + random_shift
-        )
-
-        paste_y = (
-            word_baseline_y
-            - word_baseline
-        )
-
-        max_width = (
-            PAGE_WIDTH
-            - RIGHT_MARGIN
-            - current_x
-        )
-
-        if max_width <= 4:
-            break
-
-        if word_image.width > max_width:
-            ratio = max_width / word_image.width
-
-            word_image = word_image.resize(
-                (
-                    max_width,
-                    max(
-                        1,
-                        int(
-                            word_image.height
-                            * ratio
-                        ),
-                    ),
-                ),
-                Image.Resampling.LANCZOS,
-            )
-
-        if word_index == 0:
-            draw_entry_stroke(
-                page,
-                current_x,
-                word_baseline_y,
-                ink_color,
-                settings.connection_strength,
-                rng,
-            )
-
-        if (
-            settings.connection_strength > 0
-            and previous_tail_x is not None
-            and previous_end_y is not None
-        ):
-            connection_probability = min(
-                0.96,
-                0.23
-                + settings.connection_strength * 0.69,
-            )
-
-            if rng.random() < connection_probability:
-                draw_connector_curve(
-                    page=page,
-                    start_x=previous_tail_x,
-                    start_y=previous_end_y,
-                    end_x=current_x + 2,
-                    end_y=word_baseline_y,
-                    color=ink_color,
-                    alpha=max(
-                        110,
-                        word_alpha - 55,
-                    ),
-                    strength=(
-                        settings.connection_strength
-                    ),
-                    rng=rng,
-                )
-
-        page.alpha_composite(
-            word_image,
-            (
-                max(0, current_x),
-                max(0, paste_y),
-            ),
-        )
-
+    for (
+        word,
+        word_left,
+        word_width,
+    ) in word_positions:
         maybe_draw_correction(
             page=page,
             word=word,
-            left=max(0, current_x),
+            left=word_left,
             top=max(0, paste_y),
-            width=word_image.width,
-            height=word_image.height,
-            baseline_y=word_baseline_y,
+            width=word_width,
+            height=line_image.height,
+            baseline_y=baseline_y,
             settings=settings,
             rng=rng,
         )
 
-        previous_tail_x = (
-            current_x
-            + max(
-                2,
-                word_image.width
-                - rng.randint(5, 13),
-            )
-        )
-
-        previous_end_y = (
-            word_baseline_y
-            + rng.randint(-1, 2)
-        )
-
-        last_ink_color = ink_color
-
-        current_x += (
-            word_image.width
-            + base_space
-            + settings.word_spacing
-            - int(
-                settings.connection_strength
-                * 3.2
-            )
-            + rng.randint(-1, 2)
-        )
+    line_end_x = (
+        x_start + line_image.width
+    )
 
     draw_end_flourish(
         page=page,
         start_x=min(
-            current_x - max(2, base_space // 2),
-            PAGE_WIDTH - RIGHT_MARGIN - 2,
+            line_end_x - 2,
+            PAGE_WIDTH
+            - RIGHT_MARGIN
+            - 2,
         ),
-        baseline_y=(
-            previous_end_y
-            if previous_end_y is not None
-            else baseline_y
-        ),
-        color=last_ink_color,
+        baseline_y=baseline_y,
+        color=ink_color,
         level=settings.flourish_level,
         line_text=text,
         rng=rng,
     )
 
-    return current_x
+    return line_end_x
 
 
 def draw_teacher_feedback(
@@ -1711,7 +2110,7 @@ st.set_page_config(
 )
 
 st.title("✍️ 俄语手写图片生成器")
-st.caption("进一步增强版：字体连字、自然基线、句尾收笔、多种涂改和可选红笔批改。")
+st.caption("参考图连笔版：整行统一连写、紧凑字距、平稳右倾和自然基线。")
 
 font_files = get_font_files()
 
@@ -1776,14 +2175,15 @@ with st.sidebar:
     )
 
     connection_strength = st.slider(
-        "连笔增强",
+        "连笔流畅度",
         min_value=0.0,
         max_value=1.0,
-        value=0.62,
+        value=0.78,
         step=0.05,
         help=(
-            "启用字体连字特性，并在相邻单词之间"
-            "增加自然弧形连接。推荐 0.50～0.75。"
+            "整行启用字体连字和上下文替换，"
+            "并轻微闭合字母间的小断口。"
+            "参考图建议 0.70～0.90。"
         ),
     )
 
@@ -1791,17 +2191,23 @@ with st.sidebar:
         "单词间距",
         min_value=-8,
         max_value=12,
-        value=-2,
-        help="想更像连续书写，可以设置为 -1～-3。",
+        value=-1,
+        help=(
+            "参考图中单词仍然分开，建议 -2～1；"
+            "不要调得过小，否则不同单词会粘在一起。"
+        ),
     )
 
     baseline_wave = st.slider(
         "基线起伏",
         min_value=0.0,
         max_value=5.0,
-        value=1.2,
+        value=0.8,
         step=0.2,
-        help="让同一行文字轻微上下起伏。建议 0.8～1.8。",
+        help=(
+            "整行一起轻微弯曲，不会切断单词内部连笔。"
+            "参考图建议 0.4～1.2。"
+        ),
     )
 
     flourish_level = st.select_slider(
