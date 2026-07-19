@@ -14,8 +14,10 @@ from PIL import (
     Image,
     ImageChops,
     ImageDraw,
+    ImageEnhance,
     ImageFilter,
     ImageFont,
+    ImageOps,
 )
 
 
@@ -41,7 +43,11 @@ class RenderSettings:
     font_size: int
     line_spacing: int
     paper_type: str
+    paper_age: float
+    photo_effect: str
     ink_name: str
+    pen_style: str
+    texture_strength: float
     randomness: int
     seed: int
     slant: float
@@ -51,6 +57,10 @@ class RenderSettings:
     flourish_level: int
     correction_level: int
     teacher_marks: int
+    header_enabled: bool
+    header_date: str
+    header_lesson: str
+    show_page_number: bool
     quality_scale: int = 3
 
     @property
@@ -59,6 +69,129 @@ class RenderSettings:
             self.font_size + 8,
             self.font_size + self.line_spacing,
         )
+
+
+
+PRESETS: dict[str, dict[str, object]] = {
+    "参考图：蓝色圆珠笔": {
+        "font_size": 49,
+        "line_spacing": 10,
+        "paper_type": "俄语作业本",
+        "paper_age": 0.12,
+        "photo_effect": "无",
+        "ink_name": "蓝色",
+        "pen_style": "圆珠笔",
+        "texture_strength": 0.38,
+        "randomness": 1,
+        "slant": 0.10,
+        "connection_strength": 0.82,
+        "word_spacing": -1,
+        "baseline_wave": 0.8,
+        "flourish_level": 1,
+        "correction_level": 1,
+        "teacher_marks": 0,
+    },
+    "整齐钢笔作业": {
+        "font_size": 48,
+        "line_spacing": 10,
+        "paper_type": "俄语作业本",
+        "paper_age": 0.05,
+        "photo_effect": "无",
+        "ink_name": "蓝色",
+        "pen_style": "钢笔",
+        "texture_strength": 0.24,
+        "randomness": 1,
+        "slant": 0.11,
+        "connection_strength": 0.86,
+        "word_spacing": -1,
+        "baseline_wave": 0.5,
+        "flourish_level": 2,
+        "correction_level": 0,
+        "teacher_marks": 0,
+    },
+    "黑色中性笔作业": {
+        "font_size": 48,
+        "line_spacing": 10,
+        "paper_type": "普通横线本",
+        "paper_age": 0.08,
+        "photo_effect": "无",
+        "ink_name": "黑色",
+        "pen_style": "中性笔",
+        "texture_strength": 0.22,
+        "randomness": 1,
+        "slant": 0.08,
+        "connection_strength": 0.76,
+        "word_spacing": 0,
+        "baseline_wave": 0.7,
+        "flourish_level": 1,
+        "correction_level": 1,
+        "teacher_marks": 0,
+    },
+    "铅笔课堂草稿": {
+        "font_size": 47,
+        "line_spacing": 9,
+        "paper_type": "方格本",
+        "paper_age": 0.18,
+        "photo_effect": "扫描件",
+        "ink_name": "黑色",
+        "pen_style": "铅笔",
+        "texture_strength": 0.68,
+        "randomness": 2,
+        "slant": 0.06,
+        "connection_strength": 0.64,
+        "word_spacing": 0,
+        "baseline_wave": 1.4,
+        "flourish_level": 0,
+        "correction_level": 2,
+        "teacher_marks": 0,
+    },
+    "凌乱学生课堂笔记": {
+        "font_size": 50,
+        "line_spacing": 10,
+        "paper_type": "普通横线本",
+        "paper_age": 0.22,
+        "photo_effect": "手机拍照",
+        "ink_name": "蓝色",
+        "pen_style": "圆珠笔",
+        "texture_strength": 0.48,
+        "randomness": 3,
+        "slant": 0.12,
+        "connection_strength": 0.78,
+        "word_spacing": -2,
+        "baseline_wave": 2.0,
+        "flourish_level": 2,
+        "correction_level": 2,
+        "teacher_marks": 0,
+    },
+    "老师批改后的作业": {
+        "font_size": 48,
+        "line_spacing": 10,
+        "paper_type": "俄语作业本",
+        "paper_age": 0.14,
+        "photo_effect": "手机拍照",
+        "ink_name": "蓝色",
+        "pen_style": "圆珠笔",
+        "texture_strength": 0.38,
+        "randomness": 1,
+        "slant": 0.10,
+        "connection_strength": 0.82,
+        "word_spacing": -1,
+        "baseline_wave": 0.8,
+        "flourish_level": 1,
+        "correction_level": 1,
+        "teacher_marks": 2,
+    },
+}
+
+
+def option_index(
+    options: list,
+    value,
+) -> int:
+    try:
+        return options.index(value)
+    except ValueError:
+        return 0
 
 
 # ============================================================
@@ -142,6 +275,238 @@ def draw_text_with_cursive_features(
         )
 
 
+def get_pen_profile(
+    settings: RenderSettings,
+) -> dict[str, float | tuple[int, int, int]]:
+    """
+    不同笔迹工具的基础参数。
+    """
+    if settings.pen_style == "钢笔":
+        if settings.ink_name == "蓝色":
+            base_color = (34, 57, 116)
+        else:
+            base_color = (28, 28, 30)
+
+        return {
+            "base_color": base_color,
+            "variation": 4,
+            "pressure_low": 236,
+            "pressure_high": 255,
+            "alpha_low": 235,
+            "alpha_high": 250,
+            "blur": 0.030,
+            "grain": 0.10 + settings.texture_strength * 0.12,
+            "skipiness": 0.02,
+            "feather": 0.12 + settings.texture_strength * 0.10,
+        }
+
+    if settings.pen_style == "圆珠笔":
+        if settings.ink_name == "蓝色":
+            base_color = (48, 76, 140)
+        else:
+            base_color = (40, 40, 42)
+
+        return {
+            "base_color": base_color,
+            "variation": 5,
+            "pressure_low": 228,
+            "pressure_high": 255,
+            "alpha_low": 224,
+            "alpha_high": 246,
+            "blur": 0.028,
+            "grain": 0.14 + settings.texture_strength * 0.12,
+            "skipiness": 0.06 + settings.texture_strength * 0.05,
+            "feather": 0.06,
+        }
+
+    if settings.pen_style == "铅笔":
+        return {
+            "base_color": (88, 88, 92),
+            "variation": 8,
+            "pressure_low": 190,
+            "pressure_high": 245,
+            "alpha_low": 160,
+            "alpha_high": 220,
+            "blur": 0.020,
+            "grain": 0.34 + settings.texture_strength * 0.26,
+            "skipiness": 0.16 + settings.texture_strength * 0.12,
+            "feather": 0.02,
+        }
+
+    # 默认：中性笔
+    if settings.ink_name == "蓝色":
+        base_color = (36, 61, 122)
+    else:
+        base_color = (35, 35, 36)
+
+    return {
+        "base_color": base_color,
+        "variation": 3,
+        "pressure_low": 238,
+        "pressure_high": 255,
+        "alpha_low": 236,
+        "alpha_high": 250,
+        "blur": 0.026,
+        "grain": 0.08 + settings.texture_strength * 0.08,
+        "skipiness": 0.02,
+        "feather": 0.04,
+    }
+
+
+def varied_ink_color(
+    settings: RenderSettings,
+    rng: random.Random,
+) -> tuple[int, int, int]:
+    profile = get_pen_profile(settings)
+    base = profile["base_color"]
+    variation = int(profile["variation"])
+
+    return (
+        clamp(base[0] + rng.randint(-variation, variation)),
+        clamp(base[1] + rng.randint(-variation, variation)),
+        clamp(base[2] + rng.randint(-variation, variation)),
+    )
+
+
+def create_pressure_mask(
+    text_mask: Image.Image,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> Image.Image:
+    """
+    生成基础笔压透明度。
+    """
+    profile = get_pen_profile(settings)
+
+    width, height = text_mask.size
+    small_width = max(2, width // 35)
+    small_height = max(2, height // 14)
+
+    pressure_pixels = bytes(
+        rng.randint(
+            int(profile["pressure_low"]),
+            int(profile["pressure_high"]),
+        )
+        for _ in range(small_width * small_height)
+    )
+
+    pressure = Image.frombytes(
+        "L",
+        (small_width, small_height),
+        pressure_pixels,
+    ).resize(
+        (width, height),
+        Image.Resampling.BILINEAR,
+    )
+
+    return ImageChops.multiply(text_mask, pressure)
+
+
+def create_stroke_texture_mask(
+    size: tuple[int, int],
+    settings: RenderSettings,
+    rng: random.Random,
+) -> Image.Image:
+    """
+    为笔迹添加纹理：
+    - 钢笔：比较顺滑，只带轻微墨水不均
+    - 圆珠笔：有轻微断墨和粗糙感
+    - 中性笔：较稳定
+    - 铅笔：明显颗粒感和石墨摩擦痕迹
+    """
+    width, height = size
+    profile = get_pen_profile(settings)
+    grain = float(profile["grain"])
+    skipiness = float(profile["skipiness"])
+
+    small_width = max(2, width // 10)
+    small_height = max(2, height // 6)
+
+    pixels = bytearray()
+
+    for _ in range(small_width * small_height):
+        base_value = 255 - int(rng.random() * 255 * grain * 0.55)
+        if rng.random() < skipiness:
+            base_value -= rng.randint(12, 55)
+        pixels.append(clamp(base_value))
+
+    texture = Image.frombytes(
+        "L",
+        (small_width, small_height),
+        bytes(pixels),
+    ).resize(
+        (width, height),
+        Image.Resampling.BILINEAR,
+    )
+
+    if settings.pen_style == "铅笔":
+        # 再叠加一层水平方向的石墨纹理
+        graphite = Image.new("L", (width, height), 255)
+        gdraw = ImageDraw.Draw(graphite)
+
+        line_count = max(6, height // 4)
+        for _ in range(line_count):
+            y = rng.randint(0, height - 1)
+            gdraw.line(
+                (
+                    0,
+                    y,
+                    width,
+                    y + rng.randint(-1, 1),
+                ),
+                fill=clamp(232 - rng.randint(0, 42)),
+                width=1,
+            )
+
+        texture = ImageChops.multiply(texture, graphite)
+
+    return texture
+
+
+def apply_pen_texture(
+    text_mask: Image.Image,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> tuple[Image.Image, tuple[int, int, int], int]:
+    """
+    根据书写工具把基础文字 mask 变成更像真实笔迹的 alpha。
+    """
+    profile = get_pen_profile(settings)
+
+    pressure_mask = create_pressure_mask(
+        text_mask,
+        settings,
+        rng,
+    )
+
+    texture_mask = create_stroke_texture_mask(
+        pressure_mask.size,
+        settings,
+        rng,
+    )
+
+    alpha = ImageChops.multiply(
+        pressure_mask,
+        texture_mask,
+    )
+
+    if settings.pen_style == "钢笔" and float(profile["feather"]) > 0:
+        feather = alpha.filter(
+            ImageFilter.GaussianBlur(radius=1.0)
+        ).point(
+            lambda pixel: int(pixel * float(profile["feather"]))
+        )
+        alpha = ImageChops.lighter(alpha, feather)
+
+    color = varied_ink_color(settings, rng)
+    line_alpha = rng.randint(
+        int(profile["alpha_low"]),
+        int(profile["alpha_high"]),
+    )
+
+    return alpha, color, line_alpha
+
+
 # ============================================================
 # 文档文字提取
 # ============================================================
@@ -215,92 +580,430 @@ def extract_uploaded_file(uploaded_file) -> str:
 # ============================================================
 def add_light_paper_texture(
     image: Image.Image,
+    settings: RenderSettings,
     rng: random.Random,
 ) -> None:
+    """
+    添加纸纤维、轻微旧化和不均匀底色。
+    """
     draw = ImageDraw.Draw(image)
+    age = settings.paper_age
 
-    for _ in range(1800):
+    grain_count = 1500 + int(age * 4200)
+
+    for _ in range(grain_count):
         x = rng.randint(0, PAGE_WIDTH - 1)
         y = rng.randint(0, PAGE_HEIGHT - 1)
-        shade = rng.randint(-3, 3)
+        spread = 3 + int(age * 8)
+        shade = rng.randint(-spread, spread)
 
         draw.point(
             (x, y),
             fill=(
-                clamp(247 + shade),
-                clamp(244 + shade),
-                clamp(235 + shade),
+                clamp(248 + shade),
+                clamp(246 + shade),
+                clamp(239 + shade - int(age * 4)),
             ),
         )
 
-    for _ in range(55):
+    fiber_count = 40 + int(age * 110)
+
+    for _ in range(fiber_count):
         x1 = rng.randint(0, PAGE_WIDTH - 1)
         y1 = rng.randint(0, PAGE_HEIGHT - 1)
-        x2 = x1 + rng.randint(-13, 13)
+        x2 = x1 + rng.randint(-18, 18)
         y2 = y1 + rng.randint(-5, 5)
 
         draw.line(
             (x1, y1, x2, y2),
-            fill=(240, 237, 229),
+            fill=(
+                240 - int(age * 10),
+                237 - int(age * 9),
+                230 - int(age * 7),
+            ),
             width=1,
         )
+
+    if age > 0.15:
+        stain_layer = Image.new(
+            "RGBA",
+            image.size,
+            (0, 0, 0, 0),
+        )
+        stain_draw = ImageDraw.Draw(stain_layer)
+
+        stain_count = 1 + int(age * 6)
+
+        for _ in range(stain_count):
+            cx = rng.randint(80, PAGE_WIDTH - 80)
+            cy = rng.randint(80, PAGE_HEIGHT - 80)
+            rx = rng.randint(30, 110)
+            ry = rng.randint(20, 80)
+
+            stain_draw.ellipse(
+                (cx - rx, cy - ry, cx + rx, cy + ry),
+                fill=(146, 116, 75, rng.randint(3, 10)),
+            )
+
+        stain_layer = stain_layer.filter(
+            ImageFilter.GaussianBlur(radius=22)
+        )
+        image.alpha_composite(stain_layer)
 
 
 def create_paper_background(
     settings: RenderSettings,
     rng: random.Random,
 ) -> Image.Image:
+    """
+    生成学生作业本纸张。
+    """
+    warmth = int(settings.paper_age * 12)
+
     image = Image.new(
-        "RGB",
+        "RGBA",
         (PAGE_WIDTH, PAGE_HEIGHT),
-        (247, 244, 235),
+        (
+            249 - warmth,
+            247 - warmth,
+            241 - int(warmth * 0.7),
+            255,
+        ),
     )
 
-    add_light_paper_texture(image, rng)
+    add_light_paper_texture(
+        image,
+        settings,
+        rng,
+    )
+
     draw = ImageDraw.Draw(image)
 
-    if settings.paper_type == "横线纸":
-        draw.line(
-            (55, 65, PAGE_WIDTH - 55, 65),
-            fill=(174, 184, 210),
-            width=2,
-        )
-        draw.line(
-            (55, 78, PAGE_WIDTH - 55, 78),
-            fill=(192, 200, 220),
-            width=1,
-        )
+    ruled_types = {
+        "俄语作业本",
+        "普通横线本",
+    }
 
-        for y in range(TOP_MARGIN, PAGE_HEIGHT - BOTTOM_MARGIN, settings.rule_spacing):
+    if settings.paper_type in ruled_types:
+        if settings.paper_type == "俄语作业本":
+            # 顶部双线和左侧字段，接近俄语学生作业本。
             draw.line(
-                (55, y, PAGE_WIDTH - 55, y),
-                fill=(167, 184, 218),
+                (48, 62, PAGE_WIDTH - 48, 62),
+                fill=(169, 180, 210, 220),
+                width=2,
+            )
+            draw.line(
+                (48, 78, PAGE_WIDTH - 48, 78),
+                fill=(190, 198, 219, 190),
+                width=1,
+            )
+
+            draw.text(
+                (57, 31),
+                "Дата",
+                fill=(132, 143, 168, 205),
+            )
+            draw.line(
+                (92, 48, 225, 48),
+                fill=(155, 165, 192, 200),
+                width=1,
+            )
+
+            draw.text(
+                (PAGE_WIDTH - 285, 31),
+                "Классная работа",
+                fill=(132, 143, 168, 190),
+            )
+
+        for y in range(
+            TOP_MARGIN,
+            PAGE_HEIGHT - BOTTOM_MARGIN,
+            settings.rule_spacing,
+        ):
+            line_color = (
+                (164, 181, 216, 215)
+                if settings.paper_type == "俄语作业本"
+                else (177, 191, 220, 205)
+            )
+
+            draw.line(
+                (50, y, PAGE_WIDTH - 50, y),
+                fill=line_color,
                 width=2,
             )
 
         red_line_x = LEFT_MARGIN + 48
+
         draw.line(
-            (red_line_x, 70, red_line_x, PAGE_HEIGHT - 70),
-            fill=(204, 137, 140),
+            (
+                red_line_x,
+                68,
+                red_line_x,
+                PAGE_HEIGHT - 68,
+            ),
+            fill=(202, 132, 137, 205),
             width=2,
         )
 
-    elif settings.paper_type == "方格纸":
+    elif settings.paper_type == "方格本":
         spacing = settings.rule_spacing
-        for x in range(55, PAGE_WIDTH - 55, spacing):
+
+        for x in range(
+            50,
+            PAGE_WIDTH - 50,
+            spacing,
+        ):
             draw.line(
-                (x, 55, x, PAGE_HEIGHT - 55),
-                fill=(205, 214, 230),
-                width=1,
-            )
-        for y in range(55, PAGE_HEIGHT - 55, spacing):
-            draw.line(
-                (55, y, PAGE_WIDTH - 55, y),
-                fill=(205, 214, 230),
+                (x, 50, x, PAGE_HEIGHT - 50),
+                fill=(202, 213, 231, 175),
                 width=1,
             )
 
-    return image.convert("RGBA")
+        for y in range(
+            50,
+            PAGE_HEIGHT - 50,
+            spacing,
+        ):
+            draw.line(
+                (50, y, PAGE_WIDTH - 50, y),
+                fill=(202, 213, 231, 175),
+                width=1,
+            )
+
+    return image
+
+
+def get_text_start_x(
+    settings: RenderSettings,
+) -> int:
+    if settings.paper_type in {
+        "俄语作业本",
+        "普通横线本",
+    }:
+        return LEFT_MARGIN + 48 + 20
+
+    return LEFT_MARGIN
+
+
+def draw_notebook_header(
+    page: Image.Image,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    """
+    在页面顶部绘制日期和课题。
+    """
+    if not settings.header_enabled:
+        return
+
+    header_settings = replace(
+        settings,
+        font_size=max(30, settings.font_size - 10),
+        texture_strength=min(
+            1.0,
+            settings.texture_strength + 0.04,
+        ),
+        randomness=min(
+            2,
+            settings.randomness,
+        ),
+        baseline_wave=0.25,
+        flourish_level=0,
+        correction_level=0,
+        teacher_marks=0,
+        header_enabled=False,
+        show_page_number=False,
+    )
+
+    baseline_y = 92
+
+    if settings.header_date.strip():
+        draw_handwritten_line(
+            page=page,
+            text=settings.header_date.strip(),
+            baseline_y=baseline_y,
+            x_start=72,
+            settings=header_settings,
+            rng=rng,
+        )
+
+    if settings.header_lesson.strip():
+        lesson_x = max(
+            360,
+            PAGE_WIDTH // 2 - 90,
+        )
+
+        draw_handwritten_line(
+            page=page,
+            text=settings.header_lesson.strip(),
+            baseline_y=baseline_y,
+            x_start=lesson_x,
+            settings=header_settings,
+            rng=rng,
+        )
+
+
+def draw_page_number(
+    page: Image.Image,
+    page_number: int,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    if not settings.show_page_number:
+        return
+
+    number_settings = replace(
+        settings,
+        font_size=28,
+        randomness=1,
+        baseline_wave=0.0,
+        flourish_level=0,
+        correction_level=0,
+        teacher_marks=0,
+        header_enabled=False,
+        show_page_number=False,
+    )
+
+    draw_handwritten_line(
+        page=page,
+        text=str(page_number),
+        baseline_y=PAGE_HEIGHT - 48,
+        x_start=PAGE_WIDTH - 105,
+        settings=number_settings,
+        rng=rng,
+    )
+
+
+def apply_page_finish(
+    image: Image.Image,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> Image.Image:
+    """
+    添加扫描件或手机拍照外观。
+    """
+    page = image.convert("RGB")
+
+    if settings.photo_effect == "无":
+        return page
+
+    if settings.photo_effect == "扫描件":
+        page = ImageOps.autocontrast(
+            page,
+            cutoff=0.4,
+        )
+
+        page = ImageEnhance.Contrast(
+            page
+        ).enhance(1.035)
+
+        page = ImageEnhance.Sharpness(
+            page
+        ).enhance(1.08)
+
+        vignette = Image.new(
+            "L",
+            page.size,
+            255,
+        )
+        vignette_draw = ImageDraw.Draw(vignette)
+
+        for inset in range(0, 65, 5):
+            alpha = clamp(
+                224 + inset // 2
+            )
+
+            vignette_draw.rectangle(
+                (
+                    inset,
+                    inset,
+                    PAGE_WIDTH - inset - 1,
+                    PAGE_HEIGHT - inset - 1,
+                ),
+                outline=alpha,
+                width=5,
+            )
+
+        shadow = Image.new(
+            "RGB",
+            page.size,
+            (226, 226, 226),
+        )
+
+        return Image.composite(
+            page,
+            shadow,
+            vignette,
+        )
+
+    # 手机拍照：桌面背景、页面阴影和轻微旋转。
+    canvas_width = 1420
+    canvas_height = 1940
+
+    table = Image.new(
+        "RGB",
+        (canvas_width, canvas_height),
+        (48, 47, 45),
+    )
+
+    table_draw = ImageDraw.Draw(table)
+
+    for y in range(0, canvas_height, 7):
+        shade = rng.randint(-5, 6)
+        table_draw.line(
+            (0, y, canvas_width, y),
+            fill=(
+                clamp(48 + shade),
+                clamp(47 + shade),
+                clamp(45 + shade),
+            ),
+            width=1,
+        )
+
+    angle = rng.uniform(-0.55, 0.55)
+
+    page_rgba = page.convert("RGBA").rotate(
+        angle,
+        expand=True,
+        resample=Image.Resampling.BICUBIC,
+        fillcolor=(0, 0, 0, 0),
+    )
+
+    shadow_alpha = page_rgba.getchannel("A").filter(
+        ImageFilter.GaussianBlur(radius=16)
+    )
+
+    shadow_layer = Image.new(
+        "RGBA",
+        page_rgba.size,
+        (0, 0, 0, 0),
+    )
+    shadow_layer.putalpha(
+        shadow_alpha.point(
+            lambda pixel: int(pixel * 0.40)
+        )
+    )
+
+    paste_x = (
+        canvas_width - page_rgba.width
+    ) // 2
+    paste_y = (
+        canvas_height - page_rgba.height
+    ) // 2
+
+    table_rgba = table.convert("RGBA")
+
+    table_rgba.alpha_composite(
+        shadow_layer,
+        (paste_x + 15, paste_y + 18),
+    )
+
+    table_rgba.alpha_composite(
+        page_rgba,
+        (paste_x, paste_y),
+    )
+
+    return table_rgba.convert("RGB")
 
 
 # ============================================================
@@ -421,49 +1124,6 @@ def paginate_lines(
 # ============================================================
 # 手写字渲染
 # ============================================================
-def varied_ink_color(
-    ink_name: str,
-    rng: random.Random,
-) -> tuple[int, int, int]:
-    if ink_name == "蓝色":
-        base = (42, 62, 112)
-        variation = 4
-    else:
-        base = (39, 39, 38)
-        variation = 3
-
-    return (
-        clamp(base[0] + rng.randint(-variation, variation)),
-        clamp(base[1] + rng.randint(-variation, variation)),
-        clamp(base[2] + rng.randint(-variation, variation)),
-    )
-
-
-def create_pressure_mask(
-    text_mask: Image.Image,
-    rng: random.Random,
-) -> Image.Image:
-    width, height = text_mask.size
-    small_width = max(2, width // 35)
-    small_height = max(2, height // 14)
-
-    pressure_pixels = bytes(
-        rng.randint(236, 255)
-        for _ in range(small_width * small_height)
-    )
-
-    pressure = Image.frombytes(
-        "L",
-        (small_width, small_height),
-        pressure_pixels,
-    ).resize(
-        (width, height),
-        Image.Resampling.BILINEAR,
-    )
-
-    return ImageChops.multiply(text_mask, pressure)
-
-
 def shear_right(
     image: Image.Image,
     shear: float,
@@ -895,7 +1555,7 @@ def maybe_draw_correction(
         return
 
     color = varied_ink_color(
-        settings.ink_name,
+        settings,
         rng,
     )
 
@@ -1009,7 +1669,11 @@ def render_word_image(
     tuple[int, int, int],
     int,
 ]:
+    """
+    用当前笔迹工具渲染单个词，主要用于涂改后的上方重写。
+    """
     scale = settings.quality_scale
+
     high_font = load_font(
         settings.font_path,
         settings.font_size * scale,
@@ -1033,7 +1697,7 @@ def render_word_image(
             word,
             font=high_font,
             anchor="ls",
-            features=["calt", "liga", "clig"],
+            features=["calt", "liga", "clig", "kern"],
         )
     except Exception:
         bbox = measuring_draw.textbbox(
@@ -1043,13 +1707,13 @@ def render_word_image(
             anchor="ls",
         )
 
-    text_width_value = max(
+    content_width = max(
         1,
         bbox[2] - bbox[0],
     )
 
     canvas_width = (
-        text_width_value
+        content_width
         + padding * 2
         + int(
             settings.slant
@@ -1063,7 +1727,7 @@ def render_word_image(
         + padding * 2
     )
 
-    baseline_y = padding + ascent
+    baseline_high = padding + ascent
 
     mask = Image.new(
         "L",
@@ -1074,13 +1738,13 @@ def render_word_image(
         0,
     )
 
-    mask_draw = ImageDraw.Draw(mask)
+    draw = ImageDraw.Draw(mask)
 
     draw_text_with_cursive_features(
-        mask_draw,
+        draw,
         (
             padding - bbox[0],
-            baseline_y,
+            baseline_high,
         ),
         word,
         high_font,
@@ -1088,23 +1752,26 @@ def render_word_image(
         anchor="ls",
     )
 
+    profile = get_pen_profile(settings)
+
     mask = mask.filter(
         ImageFilter.GaussianBlur(
-            radius=0.042 * scale
+            radius=float(
+                profile["blur"]
+            )
+            * scale
         )
     )
 
-    pressure_mask = create_pressure_mask(
+    (
+        alpha_mask,
+        ink_color,
+        word_alpha,
+    ) = apply_pen_texture(
         mask,
+        settings,
         rng,
     )
-
-    ink_color = varied_ink_color(
-        settings.ink_name,
-        rng,
-    )
-
-    word_alpha = rng.randint(226, 249)
 
     word_image = Image.new(
         "RGBA",
@@ -1117,23 +1784,25 @@ def render_word_image(
         ),
     )
 
-    word_image.putalpha(pressure_mask)
+    word_image.putalpha(
+        alpha_mask
+    )
 
     width_change = rng.uniform(
-        0.9955
-        - settings.randomness * 0.0009,
-        1.0045
-        + settings.randomness * 0.0009,
+        0.996
+        - settings.randomness * 0.0008,
+        1.004
+        + settings.randomness * 0.0008,
     )
 
     height_change = rng.uniform(
-        0.9975
-        - settings.randomness * 0.0006,
-        1.0025
-        + settings.randomness * 0.0006,
+        0.998
+        - settings.randomness * 0.0005,
+        1.002
+        + settings.randomness * 0.0005,
     )
 
-    resized_width = max(
+    target_width = max(
         1,
         int(
             word_image.width
@@ -1142,7 +1811,7 @@ def render_word_image(
         ),
     )
 
-    resized_height = max(
+    target_height = max(
         1,
         int(
             word_image.height
@@ -1152,65 +1821,41 @@ def render_word_image(
     )
 
     baseline_after_resize = int(
-        baseline_y
+        baseline_high
         / scale
         * height_change
     )
 
     word_image = word_image.resize(
         (
-            resized_width,
-            resized_height,
+            target_width,
+            target_height,
         ),
         Image.Resampling.LANCZOS,
     )
 
-    word_slant = max(
-        0.0,
-        settings.slant
-        + settings.connection_strength * 0.018
-        + rng.uniform(-0.012, 0.012),
-    )
-
     word_image = shear_right(
         word_image,
-        word_slant,
+        max(
+            0.0,
+            settings.slant
+            + rng.uniform(-0.008, 0.008),
+        ),
     )
 
-    if settings.randomness > 0:
-        rotation_angle = rng.uniform(
-            -0.10 - settings.randomness * 0.055,
-            0.10 + settings.randomness * 0.055,
-        )
-
-        old_height = word_image.height
-
-        word_image = word_image.rotate(
-            rotation_angle,
-            expand=True,
-            resample=Image.Resampling.BICUBIC,
-        )
-
-        baseline_after_resize += (
-            word_image.height - old_height
-        ) // 2
-
-    alpha_mask = word_image.getchannel(
+    final_alpha = word_image.getchannel(
         "A"
     ).point(
-        lambda pixel: min(
-            255,
-            max(
-                0,
-                int(
-                    pixel
-                    * (word_alpha / 255)
-                ),
-            ),
+        lambda pixel: int(
+            pixel
+            * word_alpha
+            / 255
         )
     )
 
-    word_image.putalpha(alpha_mask)
+    word_image.putalpha(
+        final_alpha
+    )
 
     return (
         word_image,
@@ -1323,13 +1968,10 @@ def render_cursive_line_image(
     """
     把整行文字一次性绘制。
 
-    关键改进：
-    1. 整行使用同一个字体排版上下文；
-    2. 启用 calt、liga、clig、kern；
-    3. 轻微闭合字母间的小断口；
-    4. 整行统一右倾、压缩和基线曲线。
-
-    这比逐个单词单独生成更容易保留俄语草写的连贯感。
+    这一版重点：
+    1. 去掉字符间人工桥接，避免出现奇怪虚线；
+    2. 保留字体自己的连字与连写；
+    3. 增加钢笔 / 圆珠笔 / 中性笔 / 铅笔的纹理差异。
     """
     scale = settings.quality_scale
 
@@ -1347,9 +1989,7 @@ def render_cursive_line_image(
         (1, 1),
         0,
     )
-    measuring_draw = ImageDraw.Draw(
-        measuring_image
-    )
+    measuring_draw = ImageDraw.Draw(measuring_image)
 
     try:
         bbox = measuring_draw.textbbox(
@@ -1357,12 +1997,7 @@ def render_cursive_line_image(
             text,
             font=high_font,
             anchor="ls",
-            features=[
-                "calt",
-                "liga",
-                "clig",
-                "kern",
-            ],
+            features=["calt", "liga", "clig", "kern"],
         )
     except Exception:
         bbox = measuring_draw.textbbox(
@@ -1372,32 +2007,19 @@ def render_cursive_line_image(
             anchor="ls",
         )
 
-    content_width = max(
-        1,
-        bbox[2] - bbox[0],
-    )
+    content_width = max(1, bbox[2] - bbox[0])
 
     canvas_width = (
         content_width
         + padding * 2
-        + int(
-            settings.slant
-            * (ascent + descent)
-        )
+        + int(settings.slant * (ascent + descent))
     )
 
-    canvas_height = (
-        ascent
-        + descent
-        + padding * 2
-    )
+    canvas_height = ascent + descent + padding * 2
 
     mask = Image.new(
         "L",
-        (
-            max(1, canvas_width),
-            max(1, canvas_height),
-        ),
+        (max(1, canvas_width), max(1, canvas_height)),
         0,
     )
 
@@ -1405,154 +2027,84 @@ def render_cursive_line_image(
 
     draw_text_with_cursive_features(
         mask_draw,
-        (
-            padding - bbox[0],
-            baseline_high,
-        ),
+        (padding - bbox[0], baseline_high),
         text,
         high_font,
         255,
         anchor="ls",
     )
 
-    # 在三倍分辨率下只增加极薄的一层。
-    # 它会闭合字体中很小的连接断口，但不会明显加粗成黑体。
-    if settings.connection_strength > 0.05:
-        expanded_mask = mask.filter(
-            ImageFilter.MaxFilter(3)
-        )
+    profile = get_pen_profile(settings)
 
-        bridge_amount = min(
-            0.18,
-            settings.connection_strength
-            * 0.15,
-        )
-
-        mask = Image.blend(
-            mask,
-            expanded_mask,
-            bridge_amount,
-        )
-
+    # 只做极轻微柔化，不再使用字符间桥接，避免虚线或怪异连接。
+    blur_radius = float(profile["blur"]) * scale
     mask = mask.filter(
-        ImageFilter.GaussianBlur(
-            radius=0.035 * scale
-        )
+        ImageFilter.GaussianBlur(radius=blur_radius)
     )
 
-    pressure_mask = create_pressure_mask(
+    alpha_mask, ink_color, line_alpha = apply_pen_texture(
         mask,
+        settings,
         rng,
     )
-
-    ink_color = varied_ink_color(
-        settings.ink_name,
-        rng,
-    )
-
-    line_alpha = rng.randint(229, 248)
 
     line_image = Image.new(
         "RGBA",
         mask.size,
-        (
-            ink_color[0],
-            ink_color[1],
-            ink_color[2],
-            0,
-        ),
+        (ink_color[0], ink_color[1], ink_color[2], 0),
     )
-
-    line_image.putalpha(
-        pressure_mask
-    )
+    line_image.putalpha(alpha_mask)
 
     space_count = text.count(" ")
 
-    # 参考图中的字比较紧凑。
-    # 连笔强度越高，整行只做很轻微的横向压缩。
     width_factor = (
         1.0
-        - settings.connection_strength * 0.026
-        + rng.uniform(-0.003, 0.003)
+        - settings.connection_strength * 0.012
+        + rng.uniform(-0.002, 0.002)
     )
 
     target_width = int(
-        line_image.width
-        / scale
-        * width_factor
-        + settings.word_spacing
-        * space_count
+        line_image.width / scale * width_factor
+        + settings.word_spacing * space_count
     )
 
     height_factor = rng.uniform(
-        0.998
-        - settings.randomness * 0.0005,
-        1.002
-        + settings.randomness * 0.0005,
+        0.998 - settings.randomness * 0.0004,
+        1.002 + settings.randomness * 0.0004,
     )
 
     target_height = int(
-        line_image.height
-        / scale
-        * height_factor
+        line_image.height / scale * height_factor
     )
 
-    target_width = max(
-        1,
-        target_width,
-    )
-
-    target_height = max(
-        1,
-        target_height,
-    )
+    target_width = max(1, target_width)
+    target_height = max(1, target_height)
 
     baseline_after_resize = int(
-        baseline_high
-        / scale
-        * height_factor
+        baseline_high / scale * height_factor
     )
 
     line_image = line_image.resize(
-        (
-            target_width,
-            target_height,
-        ),
+        (target_width, target_height),
         Image.Resampling.LANCZOS,
     )
 
-    # 参考图片中的右倾是统一的，不应每个单词倾斜方向不同。
     effective_slant = max(
         0.0,
-        settings.slant
-        + settings.connection_strength
-        * 0.012
-        + rng.uniform(-0.006, 0.006),
+        settings.slant + settings.connection_strength * 0.008 + rng.uniform(-0.005, 0.005),
     )
+    line_image = shear_right(line_image, effective_slant)
 
-    line_image = shear_right(
-        line_image,
-        effective_slant,
-    )
-
-    # 整行一起起伏，保持单词内部笔画连续。
     line_image = warp_cursive_line(
         line_image,
-        amplitude=(
-            settings.baseline_wave
-            * 0.58
-        ),
+        amplitude=(settings.baseline_wave * 0.55),
         rng=rng,
     )
 
     rotation_angle = rng.uniform(
-        -0.035
-        - settings.randomness * 0.018,
-        0.035
-        + settings.randomness * 0.018,
+        -0.030 - settings.randomness * 0.015,
+        0.030 + settings.randomness * 0.015,
     )
-
     old_height = line_image.height
 
     line_image = line_image.rotate(
@@ -1565,48 +2117,18 @@ def render_cursive_line_image(
         line_image.height - old_height
     ) // 2
 
-    alpha_mask = line_image.getchannel(
-        "A"
-    ).point(
-        lambda pixel: min(
-            255,
-            max(
-                0,
-                int(
-                    pixel
-                    * line_alpha
-                    / 255
-                ),
-            ),
-        )
+    # 总体透明度微调
+    alpha_final = line_image.getchannel("A").point(
+        lambda pixel: min(255, max(0, int(pixel * line_alpha / 255)))
     )
+    line_image.putalpha(alpha_final)
 
-    line_image.putalpha(
-        alpha_mask
-    )
-
-    # 裁掉透明边缘，让定位和换行更加准确。
-    visible_bbox = (
-        line_image
-        .getchannel("A")
-        .getbbox()
-    )
-
+    visible_bbox = line_image.getchannel("A").getbbox()
     if visible_bbox is not None:
-        baseline_after_resize -= (
-            visible_bbox[1]
-        )
+        baseline_after_resize -= visible_bbox[1]
+        line_image = line_image.crop(visible_bbox)
 
-        line_image = line_image.crop(
-            visible_bbox
-        )
-
-    return (
-        line_image,
-        baseline_after_resize,
-        ink_color,
-        line_alpha,
-    )
+    return line_image, baseline_after_resize, ink_color, line_alpha
 
 
 def approximate_word_positions(
@@ -1957,8 +2479,15 @@ def render_single_page(
         rng=rng,
     )
 
-    red_line_x = LEFT_MARGIN + 48
-    text_start_x = red_line_x + 20
+    text_start_x = get_text_start_x(
+        settings
+    )
+
+    draw_notebook_header(
+        page=image,
+        settings=settings,
+        rng=rng,
+    )
 
     previous_was_blank = True
     written_baselines: list[int] = []
@@ -1977,7 +2506,7 @@ def render_single_page(
             continue
 
         paragraph_indent = (
-            rng.randint(8, 18)
+            rng.randint(8, 20)
             if previous_was_blank
             else 0
         )
@@ -1985,13 +2514,19 @@ def render_single_page(
         x_start = (
             text_start_x
             + paragraph_indent
-            + rng.randint(-1, 2)
+            + rng.randint(
+                -max(1, settings.randomness),
+                max(2, settings.randomness + 1),
+            )
         )
 
         baseline_y = (
             rule_y
             - 2
-            + rng.randint(-1, 1)
+            + rng.randint(
+                -max(1, settings.randomness // 2),
+                max(1, settings.randomness // 2),
+            )
         )
 
         draw_handwritten_line(
@@ -2017,7 +2552,18 @@ def render_single_page(
         rng=rng,
     )
 
-    return image.convert("RGB")
+    draw_page_number(
+        page=image,
+        page_number=page_number + 1,
+        settings=settings,
+        rng=rng,
+    )
+
+    return apply_page_finish(
+        image,
+        settings,
+        rng,
+    )
 
 
 def render_document(
@@ -2026,10 +2572,16 @@ def render_document(
 ) -> list[Image.Image]:
     normal_font = load_font(settings.font_path, settings.font_size)
 
-    red_line_x = LEFT_MARGIN + 48
-    text_start_x = red_line_x + 20
+    text_start_x = get_text_start_x(
+        settings
+    )
 
-    max_text_width = PAGE_WIDTH - RIGHT_MARGIN - text_start_x - 28
+    max_text_width = (
+        PAGE_WIDTH
+        - RIGHT_MARGIN
+        - text_start_x
+        - 28
+    )
 
     lines = wrap_text(
         text=text,
@@ -2109,8 +2661,8 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("✍️ 俄语手写图片生成器")
-st.caption("参考图连笔版：整行统一连写、紧凑字距、平稳右倾和自然基线。")
+st.title("✍️ 俄语学生作业本生成器")
+st.caption("学生作业本终极版：预设、俄语本子页眉、真实笔迹纹理、涂改、批改、扫描和手机拍照外观。")
 
 font_files = get_font_files()
 
@@ -2126,112 +2678,242 @@ if not font_files:
 
 
 with st.sidebar:
-    st.header("手写设置")
+    st.header("学生作业本设置")
+
+    preset_name = st.selectbox(
+        "快速预设",
+        options=list(PRESETS.keys()),
+        help="先选择最接近的效果，再微调下面参数。",
+    )
+
+    preset = PRESETS[preset_name]
+    preset_key = preset_name.replace(" ", "_")
 
     selected_font_name = st.selectbox(
         "手写字体",
         options=list(font_files.keys()),
-        help="想接近参考图，推荐使用 Bad Script，较适合增强连笔。",
+        help=(
+            "俄语连笔推荐 Marck Script 或 Bad Script。"
+            "真正的字母连接形状主要由字体决定。"
+        ),
+        key=f"font_{preset_key}",
     )
 
     font_size = st.slider(
         "字体大小",
         min_value=36,
         max_value=72,
-        value=48,
+        value=int(preset["font_size"]),
+        key=f"font_size_{preset_key}",
     )
 
     line_spacing = st.slider(
         "横线间距",
         min_value=4,
         max_value=24,
-        value=10,
+        value=int(preset["line_spacing"]),
+        key=f"line_spacing_{preset_key}",
     )
+
+    paper_options = [
+        "俄语作业本",
+        "普通横线本",
+        "方格本",
+        "白纸",
+    ]
 
     paper_type = st.selectbox(
-        "纸张",
-        ["横线纸", "白纸", "方格纸"],
+        "本子类型",
+        paper_options,
+        index=option_index(
+            paper_options,
+            preset["paper_type"],
+        ),
+        key=f"paper_{preset_key}",
     )
 
+    paper_age = st.slider(
+        "纸张旧化",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(preset["paper_age"]),
+        step=0.05,
+        key=f"paper_age_{preset_key}",
+    )
+
+    photo_options = [
+        "无",
+        "扫描件",
+        "手机拍照",
+    ]
+
+    photo_effect = st.selectbox(
+        "导出外观",
+        photo_options,
+        index=option_index(
+            photo_options,
+            preset["photo_effect"],
+        ),
+        key=f"photo_{preset_key}",
+    )
+
+    ink_options = [
+        "黑色",
+        "蓝色",
+    ]
+
     ink_name = st.selectbox(
-        "墨水",
-        ["黑色", "蓝色"],
+        "墨水颜色",
+        ink_options,
+        index=option_index(
+            ink_options,
+            preset["ink_name"],
+        ),
+        key=f"ink_{preset_key}",
+    )
+
+    pen_options = [
+        "中性笔",
+        "钢笔",
+        "圆珠笔",
+        "铅笔",
+    ]
+
+    pen_style = st.selectbox(
+        "书写工具",
+        pen_options,
+        index=option_index(
+            pen_options,
+            preset["pen_style"],
+        ),
+        key=f"pen_{preset_key}",
+    )
+
+    texture_strength = st.slider(
+        "笔迹纹理",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(
+            preset["texture_strength"]
+        ),
+        step=0.05,
+        help=(
+            "铅笔建议 0.55～0.80；"
+            "圆珠笔建议 0.30～0.50；"
+            "钢笔建议 0.15～0.35。"
+        ),
+        key=f"texture_{preset_key}",
     )
 
     randomness = st.slider(
         "自然随机程度",
         min_value=0,
         max_value=4,
-        value=1,
-        help="参考图比较整齐，建议保持在 1～2。",
+        value=int(preset["randomness"]),
+        help="整齐作业建议 1，课堂笔记建议 2～3。",
+        key=f"random_{preset_key}",
     )
 
     slant = st.slider(
         "右倾程度",
         min_value=0.00,
         max_value=0.20,
-        value=0.10,
+        value=float(preset["slant"]),
         step=0.01,
+        key=f"slant_{preset_key}",
     )
 
     connection_strength = st.slider(
         "连笔流畅度",
         min_value=0.0,
         max_value=1.0,
-        value=0.78,
+        value=float(
+            preset["connection_strength"]
+        ),
         step=0.05,
         help=(
-            "整行启用字体连字和上下文替换，"
-            "并轻微闭合字母间的小断口。"
-            "参考图建议 0.70～0.90。"
+            "不会人工画字符连接线，只调整字体连字、"
+            "整体压缩和连写感觉。"
         ),
+        key=f"connection_{preset_key}",
     )
 
     word_spacing = st.slider(
         "单词间距",
         min_value=-8,
         max_value=12,
-        value=-1,
-        help=(
-            "参考图中单词仍然分开，建议 -2～1；"
-            "不要调得过小，否则不同单词会粘在一起。"
-        ),
+        value=int(preset["word_spacing"]),
+        help="单词应保持可辨认，通常使用 -2～1。",
+        key=f"word_spacing_{preset_key}",
     )
 
     baseline_wave = st.slider(
         "基线起伏",
         min_value=0.0,
         max_value=5.0,
-        value=0.8,
-        step=0.2,
-        help=(
-            "整行一起轻微弯曲，不会切断单词内部连笔。"
-            "参考图建议 0.4～1.2。"
+        value=float(
+            preset["baseline_wave"]
         ),
+        step=0.2,
+        key=f"baseline_{preset_key}",
     )
 
     flourish_level = st.select_slider(
         "句尾收笔",
         options=[0, 1, 2, 3],
-        value=2,
-        help="0=关闭，1=少量，2=自然，3=较明显。",
+        value=int(
+            preset["flourish_level"]
+        ),
+        key=f"flourish_{preset_key}",
     )
 
     correction_level = st.select_slider(
-        "涂改痕迹",
+        "学生涂改痕迹",
         options=[0, 1, 2, 3],
-        value=1,
+        value=int(
+            preset["correction_level"]
+        ),
         help=(
-            "包含删除线、快速涂抹、插入符号、"
+            "包括删除线、快速涂抹、插入符号、"
             "上方重写和重叠描写。"
         ),
+        key=f"correction_{preset_key}",
     )
 
     teacher_marks = st.select_slider(
         "老师红笔批改",
         options=[0, 1, 2, 3],
-        value=0,
-        help="0=关闭，1=少量，2=中等，3=较多。",
+        value=int(
+            preset["teacher_marks"]
+        ),
+        key=f"teacher_{preset_key}",
+    )
+
+    st.divider()
+    st.subheader("页眉和页码")
+
+    header_enabled = st.checkbox(
+        "显示手写页眉",
+        value=True,
+        key=f"header_enabled_{preset_key}",
+    )
+
+    header_date = st.text_input(
+        "日期",
+        value="15.01",
+        key=f"header_date_{preset_key}",
+    )
+
+    header_lesson = st.text_input(
+        "课题",
+        value="Урок русского языка",
+        key=f"header_lesson_{preset_key}",
+    )
+
+    show_page_number = st.checkbox(
+        "显示手写页码",
+        value=False,
+        key=f"page_number_{preset_key}",
     )
 
     seed = st.number_input(
@@ -2240,6 +2922,7 @@ with st.sidebar:
         max_value=999_999,
         value=12345,
         step=1,
+        key=f"seed_{preset_key}",
     )
 
 
@@ -2297,20 +2980,46 @@ if generate_clicked:
         st.warning("请先输入或上传俄语文字。")
     else:
         settings = RenderSettings(
-            font_path=str(font_files[selected_font_name]),
+            font_path=str(
+                font_files[selected_font_name]
+            ),
             font_size=font_size,
             line_spacing=line_spacing,
             paper_type=paper_type,
+            paper_age=float(paper_age),
+            photo_effect=photo_effect,
             ink_name=ink_name,
+            pen_style=pen_style,
+            texture_strength=float(
+                texture_strength
+            ),
             randomness=randomness,
             seed=int(seed),
             slant=float(slant),
             word_spacing=word_spacing,
-            connection_strength=float(connection_strength),
-            baseline_wave=float(baseline_wave),
-            flourish_level=int(flourish_level),
-            correction_level=int(correction_level),
-            teacher_marks=int(teacher_marks),
+            connection_strength=float(
+                connection_strength
+            ),
+            baseline_wave=float(
+                baseline_wave
+            ),
+            flourish_level=int(
+                flourish_level
+            ),
+            correction_level=int(
+                correction_level
+            ),
+            teacher_marks=int(
+                teacher_marks
+            ),
+            header_enabled=bool(
+                header_enabled
+            ),
+            header_date=header_date,
+            header_lesson=header_lesson,
+            show_page_number=bool(
+                show_page_number
+            ),
         )
 
         try:
