@@ -1633,7 +1633,7 @@ def draw_rewrite_above(
         rng,
     )
 
-    rewrite_x = left + rng.randint(-1, 8)
+    rewrite_x = left + rng.randint(-2, 9)
     rewrite_y = (
         top
         - int(settings.font_size * (0.42 if compact else 0.48))
@@ -1649,6 +1649,213 @@ def draw_rewrite_above(
     )
 
 
+def draw_diagonal_cancel(
+    page: Image.Image,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    color: tuple[int, int, int],
+    rng: random.Random,
+) -> None:
+    """
+    斜划或斜叉，常见于学生快速改错。
+    """
+    draw = ImageDraw.Draw(page)
+    line_count = rng.choices([1, 2], weights=[72, 28], k=1)[0]
+
+    x1 = left + rng.randint(-1, 2)
+    y1 = top + int(height * rng.uniform(0.25, 0.45))
+    x2 = left + width + rng.randint(-2, 2)
+    y2 = top + int(height * rng.uniform(0.65, 0.82))
+
+    draw.line(
+        (x1, y1, x2, y2),
+        fill=(color[0], color[1], color[2], rng.randint(170, 225)),
+        width=rng.choice([1, 1, 2]),
+        joint="curve",
+    )
+
+    if line_count == 2:
+        x3 = left + rng.randint(-1, 2)
+        y3 = top + int(height * rng.uniform(0.67, 0.83))
+        x4 = left + width + rng.randint(-2, 2)
+        y4 = top + int(height * rng.uniform(0.22, 0.42))
+
+        draw.line(
+            (x3, y3, x4, y4),
+            fill=(color[0], color[1], color[2], rng.randint(145, 205)),
+            width=1,
+            joint="curve",
+        )
+
+
+def draw_loop_cancel(
+    page: Image.Image,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    color: tuple[int, int, int],
+    rng: random.Random,
+) -> None:
+    """
+    用不规则圈或环绕线表示这一段写错了。
+    """
+    draw = ImageDraw.Draw(page)
+
+    cx = left + width // 2
+    cy = top + int(height * 0.55)
+    rx = max(8, width // 2 + rng.randint(0, 5))
+    ry = max(6, int(height * 0.30) + rng.randint(0, 4))
+
+    bbox = (
+        cx - rx,
+        cy - ry,
+        cx + rx,
+        cy + ry,
+    )
+
+    start_angle = rng.randint(150, 210)
+    end_angle = start_angle + rng.randint(240, 325)
+
+    draw.arc(
+        bbox,
+        start=start_angle,
+        end=end_angle,
+        fill=(color[0], color[1], color[2], rng.randint(165, 225)),
+        width=rng.choice([1, 1, 2]),
+    )
+
+    if rng.random() < 0.35:
+        draw.arc(
+            (
+                bbox[0] + rng.randint(-2, 1),
+                bbox[1] + rng.randint(-1, 2),
+                bbox[2] + rng.randint(-1, 2),
+                bbox[3] + rng.randint(-2, 1),
+            ),
+            start=start_angle + rng.randint(-18, 14),
+            end=end_angle - rng.randint(12, 24),
+            fill=(color[0], color[1], color[2], rng.randint(90, 155)),
+            width=1,
+        )
+
+
+def draw_short_scratch(
+    page: Image.Image,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    color: tuple[int, int, int],
+    rng: random.Random,
+) -> None:
+    """
+    短促的刮擦式涂改，常见于改一个词尾。
+    """
+    draw = ImageDraw.Draw(page)
+    stroke_count = rng.randint(2, 4)
+
+    for _ in range(stroke_count):
+        sx = left + rng.randint(-1, max(1, width // 4))
+        ex = left + width - rng.randint(0, max(1, width // 5))
+        sy = top + int(height * rng.uniform(0.38, 0.68))
+        ey = sy + rng.randint(-3, 3)
+
+        control_x = (sx + ex) // 2 + rng.randint(-4, 4)
+        control_y = sy + rng.randint(-5, 5)
+
+        points = sample_quadratic_curve(
+            (sx, sy),
+            (control_x, control_y),
+            (ex, ey),
+            steps=max(8, width // 5),
+        )
+
+        draw.line(
+            points,
+            fill=(color[0], color[1], color[2], rng.randint(120, 195)),
+            width=1,
+            joint="curve",
+        )
+
+
+def apply_random_cancel_mark(
+    page: Image.Image,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    color: tuple[int, int, int],
+    rng: random.Random,
+    allow_loop: bool = True,
+) -> None:
+    """
+    随机选择一种更自然的手写涂改方式，
+    不局限于横线。
+    """
+    styles = ["strike", "diagonal", "scratch", "scribble"]
+    weights = [26, 24, 24, 18]
+
+    if allow_loop:
+        styles.append("loop")
+        weights.append(8)
+
+    style = rng.choices(styles, weights=weights, k=1)[0]
+
+    if style == "strike":
+        draw_strikethrough(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+    elif style == "diagonal":
+        draw_diagonal_cancel(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+    elif style == "scratch":
+        draw_short_scratch(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+    elif style == "loop":
+        draw_loop_cancel(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+    else:
+        draw_scribble_correction(
+            page,
+            left,
+            top,
+            width,
+            height,
+            color,
+            rng,
+        )
+
+
 def maybe_draw_correction(
     page: Image.Image,
     word: str,
@@ -1661,12 +1868,12 @@ def maybe_draw_correction(
     rng: random.Random,
 ) -> None:
     """
-    随机生成更自然的学生笔误：
-    1. 局部删除并在上方重写
-    2. 整词删除并重写
-    3. 快速涂抹
-    4. 插入符号并补写短片段
-    5. 重叠描写后划掉
+    随机生成更自然、更像手写的学生笔误。
+    常见情况包括：
+    1. 改错词尾或局部字母
+    2. 斜划、圈出、刮擦、涂抹
+    3. 上方补写或插入补写
+    4. 整词重写
     """
     if settings.correction_level <= 0:
         return
@@ -1678,15 +1885,18 @@ def maybe_draw_correction(
     if len(clean_word) < 3:
         return
 
-    # 触发概率更疏、更不规则
     base_denominator = {
-        1: 29,
-        2: 16,
-        3: 10,
-    }.get(settings.correction_level, 16)
+        1: 31,
+        2: 18,
+        3: 11,
+    }.get(settings.correction_level, 18)
 
-    length_bonus = -1 if len(clean_word) >= 8 else 0
-    local_denominator = max(6, base_denominator + length_bonus + rng.randint(-2, 2))
+    local_denominator = max(
+        6,
+        base_denominator
+        + rng.randint(-3, 3)
+        - (1 if len(clean_word) >= 8 else 0),
+    )
 
     if rng.randint(1, local_denominator) != 1:
         return
@@ -1703,38 +1913,41 @@ def maybe_draw_correction(
         rng,
     )
 
-    # 较自然的分布：局部改错最常见，整词重写和乱涂少一些
+    fragment_left = int(fragment["left"])
+    fragment_width = int(fragment["width"])
+    fragment_text = str(fragment["text"]) or clean_word
+
     style = rng.choices(
         [
             "partial_rewrite",
             "whole_rewrite",
-            "scribble",
-            "caret",
-            "overwrite",
+            "scribble_only",
+            "caret_insert",
+            "overwrite_then_fix",
+            "loop_and_fix",
+            "scratch_and_fix",
         ],
-        weights=[34, 20, 17, 18, 11],
+        weights=[26, 16, 12, 14, 12, 10, 10],
         k=1,
     )[0]
 
     if style == "partial_rewrite":
-        draw_strikethrough(
+        apply_random_cancel_mark(
             page,
-            left,
+            fragment_left,
             top,
-            width,
+            fragment_width,
             height,
             color,
             rng,
-            start_ratio=float(fragment["start_ratio"]),
-            end_ratio=float(fragment["end_ratio"]),
+            allow_loop=True,
         )
 
-        rewrite_fragment = str(fragment["text"])
-        if rewrite_fragment:
+        if rng.random() < 0.85:
             draw_rewrite_above(
                 page,
-                rewrite_fragment,
-                int(fragment["left"]),
+                fragment_text,
+                fragment_left,
                 top,
                 settings,
                 rng,
@@ -1742,7 +1955,7 @@ def maybe_draw_correction(
             )
 
     elif style == "whole_rewrite":
-        draw_strikethrough(
+        apply_random_cancel_mark(
             page,
             left,
             top,
@@ -1750,48 +1963,46 @@ def maybe_draw_correction(
             height,
             color,
             rng,
+            allow_loop=False,
         )
 
         draw_rewrite_above(
             page,
             clean_word,
-            left,
+            left + rng.randint(-1, 4),
             top,
             settings,
             rng,
             compact=False,
         )
 
-    elif style == "scribble":
-        scribble_left = int(fragment["left"]) if rng.random() < 0.65 else left
-        scribble_width = int(fragment["width"]) if rng.random() < 0.65 else width
+    elif style == "scribble_only":
+        target_left = fragment_left if rng.random() < 0.70 else left
+        target_width = fragment_width if rng.random() < 0.70 else width
 
         draw_scribble_correction(
             page,
-            scribble_left,
+            target_left,
             top,
-            scribble_width,
+            target_width,
             height,
             color,
             rng,
         )
 
-        if rng.random() < 0.35:
+        if rng.random() < 0.28:
             draw_rewrite_above(
                 page,
-                str(fragment["text"]) or clean_word,
-                scribble_left,
+                fragment_text,
+                target_left,
                 top,
                 settings,
                 rng,
                 compact=True,
             )
 
-    elif style == "caret":
-        caret_x = (
-            int(fragment["left"])
-            + int(fragment["width"]) // 2
-        )
+    elif style == "caret_insert":
+        caret_x = fragment_left + fragment_width // 2
 
         draw_caret_mark(
             page,
@@ -1801,14 +2012,81 @@ def maybe_draw_correction(
             rng,
         )
 
-        rewrite_fragment = str(fragment["text"])
-        if not rewrite_fragment:
-            rewrite_fragment = clean_word[: max(1, min(3, len(clean_word)))]
+        draw_rewrite_above(
+            page,
+            fragment_text,
+            caret_x - rng.randint(4, 10),
+            top,
+            settings,
+            rng,
+            compact=True,
+        )
+
+    elif style == "overwrite_then_fix":
+        duplicate_settings = replace(
+            settings,
+            correction_level=0,
+            teacher_marks=0,
+            flourish_level=0,
+            baseline_wave=0.0,
+        )
+
+        duplicate, _, _, _ = render_word_image(
+            fragment_text,
+            duplicate_settings,
+            rng,
+        )
+
+        duplicate_alpha = duplicate.getchannel("A").point(
+            lambda pixel: int(pixel * 0.35)
+        )
+        duplicate.putalpha(duplicate_alpha)
+
+        page.alpha_composite(
+            duplicate,
+            (
+                max(0, fragment_left + rng.randint(-2, 2)),
+                max(0, top + rng.randint(-2, 2)),
+            ),
+        )
+
+        apply_random_cancel_mark(
+            page,
+            fragment_left,
+            top,
+            fragment_width,
+            height,
+            color,
+            rng,
+            allow_loop=False,
+        )
+
+        if rng.random() < 0.75:
+            draw_rewrite_above(
+                page,
+                fragment_text,
+                fragment_left,
+                top,
+                settings,
+                rng,
+                compact=True,
+            )
+
+    elif style == "loop_and_fix":
+        draw_loop_cancel(
+            page,
+            fragment_left,
+            top,
+            fragment_width,
+            height,
+            color,
+            rng,
+        )
 
         draw_rewrite_above(
             page,
-            rewrite_fragment,
-            caret_x - 6,
+            fragment_text,
+            fragment_left + rng.randint(-1, 3),
             top,
             settings,
             rng,
@@ -1816,186 +2094,26 @@ def maybe_draw_correction(
         )
 
     else:
-        duplicate_settings = replace(
-            settings,
-            correction_level=0,
-            teacher_marks=0,
-            flourish_level=0,
-            baseline_wave=0.0,
-        )
-
-        duplicate, _, _, _ = render_word_image(
-            clean_word,
-            duplicate_settings,
-            rng,
-        )
-
-        duplicate_alpha = duplicate.getchannel("A").point(
-            lambda pixel: int(pixel * 0.40)
-        )
-        duplicate.putalpha(duplicate_alpha)
-
-        page.alpha_composite(
-            duplicate,
-            (
-                max(0, left + rng.randint(-2, 3)),
-                max(0, top + rng.randint(-2, 2)),
-            ),
-        )
-
-        draw_strikethrough(
+        draw_short_scratch(
             page,
-            left,
+            fragment_left,
             top,
-            width,
-            height,
-            color,
-            rng,
-            start_ratio=0.0 if rng.random() < 0.55 else float(fragment["start_ratio"]),
-            end_ratio=1.0 if rng.random() < 0.55 else float(fragment["end_ratio"]),
-        )
-
-
-def maybe_draw_correction(
-    page: Image.Image,
-    word: str,
-    left: int,
-    top: int,
-    width: int,
-    height: int,
-    baseline_y: int,
-    settings: RenderSettings,
-    rng: random.Random,
-) -> None:
-    """
-    随机生成四种涂改：
-    1. 删除线并在上方重写
-    2. 来回涂抹
-    3. 插入符号并在上方补写
-    4. 重叠描写后划掉
-    """
-    if settings.correction_level <= 0:
-        return
-
-    clean_word = word.strip(
-        ".,!?;:…—-()[]{}«»\"'"
-    )
-
-    if len(clean_word) < 3:
-        return
-
-    trigger_denominator = {
-        1: 24,
-        2: 13,
-        3: 8,
-    }.get(settings.correction_level, 13)
-
-    if rng.randint(1, trigger_denominator) != 1:
-        return
-
-    color = varied_ink_color(
-        settings,
-        rng,
-    )
-
-    style = rng.choices(
-        ["rewrite", "scribble", "caret", "overwrite"],
-        weights=[38, 27, 20, 15],
-        k=1,
-    )[0]
-
-    if style == "rewrite":
-        draw_strikethrough(
-            page,
-            left,
-            top,
-            width,
+            fragment_width,
             height,
             color,
             rng,
         )
 
-        draw_rewrite_above(
-            page,
-            clean_word,
-            left,
-            top,
-            settings,
-            rng,
-        )
-
-    elif style == "scribble":
-        draw_scribble_correction(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
-
-    elif style == "caret":
-        draw_caret_mark(
-            page,
-            left + width // 2,
-            baseline_y,
-            color,
-            rng,
-        )
-
-        short_rewrite = (
-            clean_word
-            if len(clean_word) <= 7
-            else clean_word[: rng.randint(3, 6)]
-        )
-
-        draw_rewrite_above(
-            page,
-            short_rewrite,
-            left + width // 3,
-            top,
-            settings,
-            rng,
-        )
-
-    else:
-        duplicate_settings = replace(
-            settings,
-            correction_level=0,
-            teacher_marks=0,
-            flourish_level=0,
-            baseline_wave=0.0,
-        )
-
-        duplicate, _, _, _ = render_word_image(
-            clean_word,
-            duplicate_settings,
-            rng,
-        )
-
-        duplicate_alpha = duplicate.getchannel("A").point(
-            lambda pixel: int(pixel * 0.47)
-        )
-        duplicate.putalpha(duplicate_alpha)
-
-        page.alpha_composite(
-            duplicate,
-            (
-                max(0, left + rng.randint(-2, 3)),
-                max(0, top + rng.randint(-2, 2)),
-            ),
-        )
-
-        draw_strikethrough(
-            page,
-            left,
-            top,
-            width,
-            height,
-            color,
-            rng,
-        )
+        if rng.random() < 0.82:
+            draw_rewrite_above(
+                page,
+                fragment_text,
+                fragment_left,
+                top,
+                settings,
+                rng,
+                compact=True,
+            )
 
 
 def render_word_image(
@@ -2692,21 +2810,6 @@ def draw_handwritten_line(
         x_start + line_image.width
     )
 
-    draw_end_flourish(
-        page=page,
-        start_x=min(
-            line_end_x - 2,
-            PAGE_WIDTH
-            - RIGHT_MARGIN
-            - 2,
-        ),
-        baseline_y=baseline_y,
-        color=ink_color,
-        level=settings.flourish_level,
-        line_text=text,
-        rng=rng,
-    )
-
     return line_end_x
 
 
@@ -3017,7 +3120,7 @@ st.set_page_config(
 )
 
 st.title("✍️ 手写生成器")
-st.caption("简化版：更干净的连笔、更自然的笔误，并支持调节字体粗细。")
+st.caption("简化版：去掉句尾收笔，涂改更随机、更接近真实手写，并支持调节字体粗细。")
 
 font_files = get_font_files()
 
@@ -3089,7 +3192,7 @@ with st.sidebar:
         "笔误与涂改",
         options=[0, 1, 2, 3],
         value=int(preset["correction_level"]),
-        help="0=关闭，1=少量，2=自然，3=较多。",
+        help="0=关闭，1=少量，2=自然，3=较多；会随机使用圈、斜划、刮擦、涂抹、补写等方式。",
         key=f"correction_{preset_key}",
     )
 
@@ -3197,12 +3300,7 @@ with st.sidebar:
             key=f"baseline_{preset_key}",
         )
 
-        flourish_level = st.select_slider(
-            "句尾收笔",
-            options=[0, 1, 2, 3],
-            value=int(preset["flourish_level"]),
-            key=f"flourish_{preset_key}",
-        )
+        flourish_level = 0
 
         teacher_marks = st.select_slider(
             "老师红笔批改",
