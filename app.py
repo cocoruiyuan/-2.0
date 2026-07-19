@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -45,6 +44,7 @@ class RenderSettings:
     line_spacing: int
     paper_type: str
     paper_age: float
+    wrinkle_strength: float
     photo_effect: str
     ink_name: str
     pen_style: str
@@ -58,6 +58,7 @@ class RenderSettings:
     baseline_wave: float
     flourish_level: int
     correction_level: int
+    correction_style: str
     teacher_marks: int
     header_enabled: bool
     header_date: str
@@ -80,6 +81,7 @@ PRESETS: dict[str, dict[str, object]] = {
         "line_spacing": 10,
         "paper_type": "俄语作业本",
         "paper_age": 0.12,
+        "wrinkle_strength": 0.10,
         "photo_effect": "无",
         "ink_name": "蓝色",
         "pen_style": "圆珠笔",
@@ -92,12 +94,14 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 1,
         "correction_level": 1,
         "teacher_marks": 0,
+        "correction_style": "混合",
     },
     "整齐钢笔作业": {
         "font_size": 48,
         "line_spacing": 10,
         "paper_type": "俄语作业本",
         "paper_age": 0.05,
+        "wrinkle_strength": 0.04,
         "photo_effect": "无",
         "ink_name": "蓝色",
         "pen_style": "钢笔",
@@ -110,12 +114,14 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 2,
         "correction_level": 0,
         "teacher_marks": 0,
+        "correction_style": "混合",
     },
     "黑色中性笔作业": {
         "font_size": 48,
         "line_spacing": 10,
         "paper_type": "普通横线本",
         "paper_age": 0.08,
+        "wrinkle_strength": 0.06,
         "photo_effect": "无",
         "ink_name": "黑色",
         "pen_style": "中性笔",
@@ -128,12 +134,14 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 1,
         "correction_level": 1,
         "teacher_marks": 0,
+        "correction_style": "混合",
     },
     "铅笔课堂草稿": {
         "font_size": 47,
         "line_spacing": 9,
         "paper_type": "方格本",
         "paper_age": 0.18,
+        "wrinkle_strength": 0.14,
         "photo_effect": "扫描件",
         "ink_name": "黑色",
         "pen_style": "铅笔",
@@ -146,12 +154,14 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 0,
         "correction_level": 2,
         "teacher_marks": 0,
+        "correction_style": "混合",
     },
     "凌乱学生课堂笔记": {
         "font_size": 50,
         "line_spacing": 10,
         "paper_type": "普通横线本",
         "paper_age": 0.22,
+        "wrinkle_strength": 0.22,
         "photo_effect": "手机拍照",
         "ink_name": "蓝色",
         "pen_style": "圆珠笔",
@@ -164,12 +174,14 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 2,
         "correction_level": 2,
         "teacher_marks": 0,
+        "correction_style": "混合",
     },
     "老师批改后的作业": {
         "font_size": 48,
         "line_spacing": 10,
         "paper_type": "俄语作业本",
         "paper_age": 0.14,
+        "wrinkle_strength": 0.12,
         "photo_effect": "手机拍照",
         "ink_name": "蓝色",
         "pen_style": "圆珠笔",
@@ -182,6 +194,7 @@ PRESETS: dict[str, dict[str, object]] = {
         "flourish_level": 1,
         "correction_level": 1,
         "teacher_marks": 2,
+        "correction_style": "混合",
     },
 }
 
@@ -652,20 +665,21 @@ def add_light_paper_texture(
     rng: random.Random,
 ) -> None:
     """
-    添加更干净的纸张纹理。
-
-    这一版去掉了与文字无关的细小划线，
-    只保留非常轻微的明暗颗粒和少量旧化。
+    添加更明显但仍自然的纸张质感：
+    - 细颗粒
+    - 大面积明暗变化
+    - 轻微纤维感
+    - 淡旧化污渍
     """
     draw = ImageDraw.Draw(image)
     age = settings.paper_age
 
-    grain_count = 1100 + int(age * 2600)
+    grain_count = 1800 + int(age * 4200)
 
     for _ in range(grain_count):
         x = rng.randint(0, PAGE_WIDTH - 1)
         y = rng.randint(0, PAGE_HEIGHT - 1)
-        spread = 2 + int(age * 5)
+        spread = 2 + int(age * 7)
         shade = rng.randint(-spread, spread)
 
         draw.point(
@@ -673,12 +687,67 @@ def add_light_paper_texture(
             fill=(
                 clamp(248 + shade),
                 clamp(246 + shade),
-                clamp(240 + shade - int(age * 3)),
+                clamp(239 + shade - int(age * 4)),
             ),
         )
 
-    # 只在旧化较明显时加非常淡的污渍，不再添加随机细线。
-    if age > 0.22:
+    # 大面积纸色起伏，让纸更有“面”的感觉
+    cloud_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    cloud_draw = ImageDraw.Draw(cloud_layer)
+
+    cloud_count = 8 + int(age * 12)
+    for _ in range(cloud_count):
+        cx = rng.randint(0, PAGE_WIDTH)
+        cy = rng.randint(0, PAGE_HEIGHT)
+        rx = rng.randint(70, 220)
+        ry = rng.randint(50, 180)
+
+        tint = rng.choice(
+            [
+                (255, 253, 247, rng.randint(6, 12)),
+                (236, 231, 220, rng.randint(5, 11)),
+                (244, 239, 229, rng.randint(4, 10)),
+            ]
+        )
+
+        cloud_draw.ellipse(
+            (cx - rx, cy - ry, cx + rx, cy + ry),
+            fill=tint,
+        )
+
+    cloud_layer = cloud_layer.filter(
+        ImageFilter.GaussianBlur(radius=36)
+    )
+    image.alpha_composite(cloud_layer)
+
+    # 轻微纤维感，用短小、低透明度线段表示纸纤维，不是“脏线”
+    fiber_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    fiber_draw = ImageDraw.Draw(fiber_layer)
+
+    fiber_count = 120 + int(age * 200)
+    for _ in range(fiber_count):
+        x1 = rng.randint(0, PAGE_WIDTH - 1)
+        y1 = rng.randint(0, PAGE_HEIGHT - 1)
+        x2 = x1 + rng.randint(-10, 10)
+        y2 = y1 + rng.randint(-3, 3)
+
+        fiber_draw.line(
+            (x1, y1, x2, y2),
+            fill=(
+                rng.randint(226, 239),
+                rng.randint(223, 236),
+                rng.randint(214, 230),
+                rng.randint(6, 15),
+            ),
+            width=1,
+        )
+
+    fiber_layer = fiber_layer.filter(
+        ImageFilter.GaussianBlur(radius=0.35)
+    )
+    image.alpha_composite(fiber_layer)
+
+    if age > 0.16:
         stain_layer = Image.new(
             "RGBA",
             image.size,
@@ -686,23 +755,132 @@ def add_light_paper_texture(
         )
         stain_draw = ImageDraw.Draw(stain_layer)
 
-        stain_count = 1 + int((age - 0.2) * 3)
+        stain_count = 1 + int((age - 0.15) * 5)
 
         for _ in range(stain_count):
             cx = rng.randint(120, PAGE_WIDTH - 120)
             cy = rng.randint(120, PAGE_HEIGHT - 120)
-            rx = rng.randint(45, 100)
-            ry = rng.randint(28, 70)
+            rx = rng.randint(40, 110)
+            ry = rng.randint(24, 78)
 
             stain_draw.ellipse(
                 (cx - rx, cy - ry, cx + rx, cy + ry),
-                fill=(150, 120, 78, rng.randint(2, 6)),
+                fill=(158, 128, 88, rng.randint(2, 8)),
             )
 
         stain_layer = stain_layer.filter(
             ImageFilter.GaussianBlur(radius=26)
         )
         image.alpha_composite(stain_layer)
+
+
+def apply_paper_wrinkles(
+    image: Image.Image,
+    settings: RenderSettings,
+    rng: random.Random,
+) -> None:
+    """
+    添加纸张褶皱：
+    - 用淡阴影 + 高光模拟折痕
+    - 强度较低时非常隐约
+    - 适合拍照或旧化纸面
+    """
+    wrinkle_strength = settings.wrinkle_strength
+
+    if wrinkle_strength <= 0.01:
+        return
+
+    wrinkle_layer = Image.new(
+        "RGBA",
+        image.size,
+        (0, 0, 0, 0),
+    )
+    wrinkle_draw = ImageDraw.Draw(wrinkle_layer)
+
+    wrinkle_count = max(
+        1,
+        int(1 + wrinkle_strength * 5),
+    )
+
+    for _ in range(wrinkle_count):
+        orientation = rng.choices(
+            ["vertical", "horizontal", "diagonal"],
+            weights=[42, 18, 40],
+            k=1,
+        )[0]
+
+        if orientation == "vertical":
+            x = rng.randint(120, PAGE_WIDTH - 120)
+            start = (x + rng.randint(-18, 18), 0)
+            end = (x + rng.randint(-18, 18), PAGE_HEIGHT)
+            control = (
+                x + rng.randint(-70, 70),
+                PAGE_HEIGHT // 2 + rng.randint(-220, 220),
+            )
+        elif orientation == "horizontal":
+            y = rng.randint(180, PAGE_HEIGHT - 180)
+            start = (0, y + rng.randint(-12, 12))
+            end = (PAGE_WIDTH, y + rng.randint(-12, 12))
+            control = (
+                PAGE_WIDTH // 2 + rng.randint(-240, 240),
+                y + rng.randint(-60, 60),
+            )
+        else:
+            if rng.random() < 0.5:
+                start = (rng.randint(0, 120), rng.randint(0, PAGE_HEIGHT // 3))
+                end = (PAGE_WIDTH - rng.randint(0, 120), PAGE_HEIGHT - rng.randint(0, PAGE_HEIGHT // 3))
+            else:
+                start = (rng.randint(0, 120), PAGE_HEIGHT - rng.randint(0, PAGE_HEIGHT // 3))
+                end = (PAGE_WIDTH - rng.randint(0, 120), rng.randint(0, PAGE_HEIGHT // 3))
+
+            control = (
+                PAGE_WIDTH // 2 + rng.randint(-220, 220),
+                PAGE_HEIGHT // 2 + rng.randint(-220, 220),
+            )
+
+        points = sample_quadratic_curve(
+            start,
+            control,
+            end,
+            steps=80,
+        )
+
+        shadow_alpha = int(18 + wrinkle_strength * 38)
+        highlight_alpha = int(14 + wrinkle_strength * 28)
+
+        # 阴影
+        shadow_offset = rng.randint(1, 3)
+        shadow_points = [(px + shadow_offset, py + shadow_offset) for px, py in points]
+        wrinkle_draw.line(
+            shadow_points,
+            fill=(150, 140, 130, shadow_alpha),
+            width=1 + int(wrinkle_strength * 2),
+            joint="curve",
+        )
+
+        # 高光
+        highlight_offset = rng.randint(1, 2)
+        highlight_points = [(px - highlight_offset, py - highlight_offset) for px, py in points]
+        wrinkle_draw.line(
+            highlight_points,
+            fill=(255, 254, 249, highlight_alpha),
+            width=1 + int(wrinkle_strength),
+            joint="curve",
+        )
+
+        # 中间轻微折带
+        if rng.random() < 0.65:
+            wrinkle_draw.line(
+                points,
+                fill=(210, 202, 190, int(10 + wrinkle_strength * 16)),
+                width=1,
+                joint="curve",
+            )
+
+    wrinkle_layer = wrinkle_layer.filter(
+        ImageFilter.GaussianBlur(radius=1.2 + wrinkle_strength * 1.4)
+    )
+    image.alpha_composite(wrinkle_layer)
 
 
 def create_paper_background(
@@ -726,6 +904,12 @@ def create_paper_background(
     )
 
     add_light_paper_texture(
+        image,
+        settings,
+        rng,
+    )
+
+    apply_paper_wrinkles(
         image,
         settings,
         rng,
@@ -2065,6 +2249,195 @@ def apply_random_cancel_mark(
         )
 
 
+
+def choose_micro_fragment(
+    word: str,
+    left: int,
+    width: int,
+    rng: random.Random,
+) -> dict[str, object]:
+    """
+    选择更像作业本里“改一个词尾/一个字母/两个字母”的局部片段。
+    """
+    length = len(word)
+
+    if length <= 2:
+        start_index = 0
+        end_index = length
+    else:
+        region = rng.choices(
+            ["suffix", "middle", "prefix"],
+            weights=[62, 26, 12],
+            k=1,
+        )[0]
+
+        max_frag = 2 if length <= 5 else 3
+        frag_len = min(length, rng.randint(1, max_frag))
+
+        if region == "suffix":
+            start_index = max(0, length - frag_len)
+            end_index = length
+        elif region == "middle":
+            max_start = max(1, length - frag_len - 1)
+            start_index = rng.randint(1, max_start)
+            end_index = start_index + frag_len
+        else:
+            start_index = 0
+            end_index = frag_len
+
+    start_ratio = start_index / max(1, length)
+    end_ratio = end_index / max(1, length)
+
+    fragment_left = left + int(width * start_ratio)
+    fragment_width = max(10, int(width * (end_ratio - start_ratio)))
+
+    return {
+        "text": word[start_index:end_index],
+        "start_ratio": start_ratio,
+        "end_ratio": end_ratio,
+        "left": fragment_left,
+        "width": fragment_width,
+        "start_index": start_index,
+        "end_index": end_index,
+    }
+
+
+def draw_fragment_hatch_fix(
+    page: Image.Image,
+    fragment_text: str,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    settings: RenderSettings,
+    rng: random.Random,
+    hatch_style: str,
+) -> None:
+    """
+    参考图中的局部改错：
+    局部先被几道线压住，再在上方或附近补写。
+    """
+    ink = varied_ink_color(settings, rng)
+
+    # 先轻微叠写，使错误部分看起来像真的写出来过
+    if rng.random() < 0.70:
+        draw_inline_overwrite(
+            page,
+            fragment_text,
+            left,
+            top,
+            settings,
+            rng,
+        )
+
+    if hatch_style == "规整型":
+        draw_scribble_correction(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            rng,
+            style="neat",
+        )
+    elif hatch_style == "乱涂型":
+        draw_scribble_correction(
+            page,
+            left,
+            top,
+            width,
+            height,
+            ink,
+            rng,
+            style="messy",
+        )
+    else:
+        style = rng.choices(
+            ["neat", "messy", "scratch", "diagonal"],
+            weights=[34, 20, 28, 18],
+            k=1,
+        )[0]
+
+        if style == "neat":
+            draw_scribble_correction(
+                page, left, top, width, height, ink, rng, style="neat"
+            )
+        elif style == "messy":
+            draw_scribble_correction(
+                page, left, top, width, height, ink, rng, style="messy"
+            )
+        elif style == "scratch":
+            draw_short_scratch(
+                page, left, top, width, height, ink, rng
+            )
+        else:
+            draw_diagonal_cancel(
+                page, left, top, width, height, ink, rng
+            )
+
+    if rng.random() < 0.88:
+        draw_rewrite_above(
+            page,
+            fragment_text,
+            left + rng.randint(-1, 3),
+            top,
+            settings,
+            rng,
+            compact=True,
+        )
+
+
+def get_correction_style_weights(
+    correction_style: str,
+) -> dict[str, int]:
+    """
+    根据涂改风格返回样式权重。
+    """
+    if correction_style == "局部改错型":
+        return {
+            "tail_fix": 34,
+            "inline_overwrite_fix": 22,
+            "messy_hatch_fix": 8,
+            "neat_hatch_fix": 18,
+            "caret_insert": 8,
+            "whole_word_retry": 4,
+            "cross_fix": 6,
+        }
+
+    if correction_style == "规整型":
+        return {
+            "tail_fix": 22,
+            "inline_overwrite_fix": 18,
+            "messy_hatch_fix": 4,
+            "neat_hatch_fix": 32,
+            "caret_insert": 9,
+            "whole_word_retry": 6,
+            "cross_fix": 9,
+        }
+
+    if correction_style == "乱涂型":
+        return {
+            "tail_fix": 14,
+            "inline_overwrite_fix": 12,
+            "messy_hatch_fix": 32,
+            "neat_hatch_fix": 6,
+            "caret_insert": 7,
+            "whole_word_retry": 16,
+            "cross_fix": 13,
+        }
+
+    return {
+        "tail_fix": 28,
+        "inline_overwrite_fix": 18,
+        "messy_hatch_fix": 14,
+        "neat_hatch_fix": 13,
+        "caret_insert": 10,
+        "whole_word_retry": 9,
+        "cross_fix": 8,
+    }
+
+
 def maybe_draw_correction(
     page: Image.Image,
     word: str,
@@ -2077,10 +2450,10 @@ def maybe_draw_correction(
     rng: random.Random,
 ) -> None:
     """
-    参照用户提供的涂改笔记图片优化：
-    - 更常见局部词尾/局部字母改错
-    - 常见“字上叠字”“轻微乱涂再重写”
-    - 涂改方式不只横线，还有规整斜线、乱涂块、斜叉
+    涂改笔记终极优化版：
+    - 更偏向改词尾、局部片段
+    - 支持规整型、乱涂型、混合型、局部改错型
+    - 更像先写错、轻微覆盖、再补写的真实作业本痕迹
     """
     if settings.correction_level <= 0:
         return
@@ -2092,12 +2465,11 @@ def maybe_draw_correction(
     if len(clean_word) < 3:
         return
 
-    # 减少触发，让改错更稀疏真实
     base_denominator = {
-        1: 34,
-        2: 20,
-        3: 12,
-    }.get(settings.correction_level, 20)
+        1: 36,
+        2: 22,
+        3: 13,
+    }.get(settings.correction_level, 22)
 
     local_denominator = max(
         7,
@@ -2114,7 +2486,7 @@ def maybe_draw_correction(
         rng,
     )
 
-    fragment = choose_error_fragment(
+    fragment = choose_micro_fragment(
         clean_word,
         left,
         width,
@@ -2122,35 +2494,37 @@ def maybe_draw_correction(
     )
 
     fragment_left = int(fragment["left"])
-    fragment_width = int(fragment["width"])
+    fragment_width = max(12, int(fragment["width"]))
     fragment_text = str(fragment["text"]) or clean_word
 
+    weights = get_correction_style_weights(
+        settings.correction_style
+    )
+
+    style_names = list(weights.keys())
+    style_weights = list(weights.values())
+
     style = rng.choices(
-        [
-            "tail_fix",
-            "inline_overwrite_fix",
-            "messy_hatch_fix",
-            "neat_hatch_fix",
-            "caret_insert",
-            "whole_word_retry",
-            "cross_fix",
-        ],
-        weights=[28, 18, 14, 13, 10, 9, 8],
+        style_names,
+        weights=style_weights,
         k=1,
     )[0]
 
     if style == "tail_fix":
-        # 最接近日常作业：改词尾或局部片段
-        draw_partial_replace_note(
+        draw_fragment_hatch_fix(
             page,
             fragment_text,
             fragment_left,
             top,
+            fragment_width,
+            height,
             settings,
             rng,
+            settings.correction_style,
         )
 
     elif style == "inline_overwrite_fix":
+        # 参考图中的“字上叠字”
         draw_inline_overwrite(
             page,
             fragment_text,
@@ -2160,7 +2534,7 @@ def maybe_draw_correction(
             rng,
         )
 
-        if rng.random() < 0.72:
+        if rng.random() < 0.82:
             draw_rewrite_above(
                 page,
                 fragment_text,
@@ -2176,14 +2550,14 @@ def maybe_draw_correction(
             page,
             fragment_left,
             top,
-            max(fragment_width, 14),
+            fragment_width,
             height,
             color,
             rng,
             style="messy",
         )
 
-        if rng.random() < 0.68:
+        if rng.random() < 0.76:
             draw_rewrite_above(
                 page,
                 fragment_text,
@@ -2199,14 +2573,14 @@ def maybe_draw_correction(
             page,
             fragment_left,
             top,
-            max(fragment_width, 14),
+            fragment_width,
             height,
             color,
             rng,
             style="neat",
         )
 
-        if rng.random() < 0.82:
+        if rng.random() < 0.88:
             draw_rewrite_above(
                 page,
                 fragment_text,
@@ -2239,7 +2613,6 @@ def maybe_draw_correction(
         )
 
     elif style == "whole_word_retry":
-        # 整词轻微涂掉后再重写，像第二张图中改一整词
         draw_retry_block(
             page,
             clean_word,
@@ -2250,18 +2623,29 @@ def maybe_draw_correction(
         )
 
     else:
-        # 斜叉式改错
-        draw_diagonal_cancel(
-            page,
-            fragment_left,
-            top,
-            max(fragment_width, 14),
-            height,
-            color,
-            rng,
-        )
+        # cross_fix：局部斜叉/短刮擦再补写
+        if rng.random() < 0.58:
+            draw_diagonal_cancel(
+                page,
+                fragment_left,
+                top,
+                fragment_width,
+                height,
+                color,
+                rng,
+            )
+        else:
+            draw_short_scratch(
+                page,
+                fragment_left,
+                top,
+                fragment_width,
+                height,
+                color,
+                rng,
+            )
 
-        if rng.random() < 0.76:
+        if rng.random() < 0.80:
             draw_rewrite_above(
                 page,
                 fragment_text,
@@ -3277,7 +3661,7 @@ st.set_page_config(
 )
 
 st.title("✍️ 手写生成器")
-st.caption("简化版：参考改错笔记优化涂改样式，支持更自然的局部改错、叠写、规整涂改和乱涂。")
+st.caption("涂改笔记终极优化版：去掉连笔流畅度选项，增强纸张质感，并新增纸张褶皱选项。")
 
 font_files = get_font_files()
 
@@ -3353,6 +3737,18 @@ with st.sidebar:
         key=f"correction_{preset_key}",
     )
 
+    correction_style_options = ["混合", "局部改错型", "规整型", "乱涂型"]
+    correction_style = st.selectbox(
+        "涂改风格",
+        correction_style_options,
+        index=option_index(
+            correction_style_options,
+            preset.get("correction_style", "混合"),
+        ),
+        help="局部改错型最像作业里改词尾；规整型偏整齐划线；乱涂型偏密集乱涂。",
+        key=f"correction_style_{preset_key}",
+    )
+
     header_enabled = st.checkbox(
         "显示页眉",
         value=True,
@@ -3393,6 +3789,16 @@ with st.sidebar:
             key=f"paper_age_{preset_key}",
         )
 
+        wrinkle_strength = st.slider(
+            "纸张褶皱",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(preset.get("wrinkle_strength", 0.0)),
+            step=0.05,
+            help="增加折痕、高光和阴影，让纸更像真实拍照纸页。",
+            key=f"wrinkle_{preset_key}",
+        )
+
         photo_options = ["无", "扫描件", "手机拍照"]
         photo_effect = st.selectbox(
             "导出外观",
@@ -3430,14 +3836,8 @@ with st.sidebar:
             key=f"slant_{preset_key}",
         )
 
-        connection_strength = st.slider(
-            "连笔流畅度",
-            min_value=0.0,
-            max_value=1.0,
-            value=float(preset["connection_strength"]),
-            step=0.05,
-            help="仅调整整体连写感，不再人工添加细线。",
-            key=f"connection_{preset_key}",
+        connection_strength = float(
+            preset["connection_strength"]
         )
 
         word_spacing = st.slider(
@@ -3500,6 +3900,10 @@ with st.sidebar:
         line_spacing = int(preset["line_spacing"])
     if "paper_age" not in locals():
         paper_age = float(preset["paper_age"])
+    if "wrinkle_strength" not in locals():
+        wrinkle_strength = float(
+            preset.get("wrinkle_strength", 0.0)
+        )
     if "photo_effect" not in locals():
         photo_effect = preset["photo_effect"]
     if "texture_strength" not in locals():
@@ -3589,6 +3993,9 @@ if generate_clicked:
             line_spacing=int(line_spacing),
             paper_type=str(paper_type),
             paper_age=float(paper_age),
+            wrinkle_strength=float(
+                wrinkle_strength
+            ),
             photo_effect=str(photo_effect),
             ink_name=str(ink_name),
             pen_style=str(pen_style),
@@ -3611,6 +4018,9 @@ if generate_clicked:
             ),
             correction_level=int(
                 correction_level
+            ),
+            correction_style=str(
+                correction_style
             ),
             teacher_marks=int(
                 teacher_marks
