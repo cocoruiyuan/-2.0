@@ -4512,6 +4512,404 @@ st.markdown(
 )
 
 
+# ============================================================
+# 强制浅色控件：彻底消除浏览器/Streamlit 注入的黑色区域
+# ============================================================
+st.markdown(
+    """
+    <style>
+    html,
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stSidebar"] {
+        color-scheme: light !important;
+    }
+
+    input,
+    textarea,
+    button,
+    [data-baseweb="select"],
+    [data-baseweb="select"] * {
+        color-scheme: light !important;
+    }
+
+    /* ======================================================
+       下拉框：所有内部节点统一浅色
+       ====================================================== */
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] > div {
+        position: relative !important;
+        overflow: hidden !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        border-radius: 13px !important;
+        box-shadow: none !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        border: 1px solid #dbe3f4 !important;
+    }
+
+    div[data-baseweb="select"] > div:hover {
+        border-color: #b9c6ec !important;
+    }
+
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #7184ec !important;
+        box-shadow: 0 0 0 3px rgba(83, 109, 245, 0.11) !important;
+    }
+
+    /* 清除 BaseWeb 生成的全部深色子层 */
+    div[data-baseweb="select"] > div *,
+    div[data-baseweb="select"] > div > *,
+    div[data-baseweb="select"] > div > * > *,
+    div[data-baseweb="select"] [aria-hidden="true"],
+    div[data-baseweb="select"] [role="button"],
+    div[data-baseweb="select"] input {
+        background: transparent !important;
+        background-color: transparent !important;
+        color: #263a6c !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* 右侧箭头区域 */
+    div[data-baseweb="select"] > div > div:last-child,
+    div[data-baseweb="select"] [aria-hidden="true"]:last-child {
+        min-width: 48px !important;
+        height: 100% !important;
+        background: linear-gradient(
+            180deg,
+            #f7f9ff 0%,
+            #edf2ff 100%
+        ) !important;
+        background-color: #f2f5ff !important;
+        border-left: 1px solid #dfe6f5 !important;
+        border-radius: 0 12px 12px 0 !important;
+    }
+
+    div[data-baseweb="select"] svg {
+        color: #6073a7 !important;
+        fill: #6073a7 !important;
+        background: transparent !important;
+    }
+
+    div[data-baseweb="select"] input {
+        -webkit-text-fill-color: #263a6c !important;
+        opacity: 1 !important;
+    }
+
+    /* 弹出的选项菜单 */
+    div[role="listbox"],
+    ul[role="listbox"] {
+        color-scheme: light !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        border: 1px solid #dbe3f4 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 15px 38px rgba(39, 54, 103, 0.15) !important;
+    }
+
+    div[role="option"],
+    li[role="option"],
+    div[role="option"] *,
+    li[role="option"] * {
+        color: #263a6c !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+    }
+
+    div[role="option"]:hover,
+    li[role="option"]:hover,
+    div[role="option"][aria-selected="true"],
+    li[role="option"][aria-selected="true"] {
+        color: #344db0 !important;
+        background: #edf2ff !important;
+        background-color: #edf2ff !important;
+    }
+
+    /* ======================================================
+       文本输入框：清除黑色边框、浏览器轮廓和内部阴影
+       ====================================================== */
+    [data-testid="stTextArea"],
+    [data-testid="stTextArea"] > div,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"],
+    [data-testid="stTextInput"] > div,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"],
+    [data-testid="stNumberInput"] > div,
+    [data-testid="stNumberInput"] input {
+        color-scheme: light !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #263a6c !important;
+        border-color: transparent !important;
+        outline: 0 !important;
+        outline-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stTextArea"] > div,
+    [data-testid="stTextInput"] > div,
+    [data-testid="stNumberInput"] > div {
+        border: 1px solid #dbe3f4 !important;
+        border-radius: 13px !important;
+        overflow: hidden !important;
+    }
+
+    [data-testid="stTextArea"] > div:hover,
+    [data-testid="stTextInput"] > div:hover,
+    [data-testid="stNumberInput"] > div:hover {
+        border-color: #b9c6ec !important;
+    }
+
+    [data-testid="stTextArea"] > div:focus-within,
+    [data-testid="stTextInput"] > div:focus-within,
+    [data-testid="stNumberInput"] > div:focus-within {
+        border-color: #7184ec !important;
+        box-shadow: 0 0 0 3px rgba(83, 109, 245, 0.11) !important;
+    }
+
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input {
+        border: 0 !important;
+        border-width: 0 !important;
+        border-style: none !important;
+        border-radius: 0 !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        -webkit-text-fill-color: #263a6c !important;
+    }
+
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stTextArea"] textarea:focus-visible,
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stTextInput"] input:focus-visible,
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus-visible {
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+    }
+
+    /* ======================================================
+       文件上传按钮和区域
+       ====================================================== */
+    [data-testid="stFileUploader"],
+    [data-testid="stFileUploader"] *,
+    [data-testid="stFileUploaderDropzone"],
+    [data-testid="stFileUploaderDropzone"] * {
+        color-scheme: light !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        color: #66779f !important;
+        background: linear-gradient(
+            145deg,
+            #fafcff 0%,
+            #f7f8ff 100%
+        ) !important;
+        border: 1.5px dashed #bdc9ed !important;
+        border-radius: 15px !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] p,
+    [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploaderDropzoneInstructions"],
+    [data-testid="stFileUploaderDropzoneInstructions"] * {
+        color: #66779f !important;
+        background: transparent !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button,
+    [data-testid="stFileUploader"] button,
+    [data-testid="stFileUploader"] [kind="secondary"],
+    [data-testid="stFileUploader"] [data-testid="baseButton-secondary"] {
+        color: #405bc1 !important;
+        background: linear-gradient(
+            180deg,
+            #f4f7ff 0%,
+            #e8eeff 100%
+        ) !important;
+        background-color: #eef2ff !important;
+        border: 1px solid #d2dcf7 !important;
+        border-radius: 11px !important;
+        outline: 0 !important;
+        box-shadow: 0 4px 12px rgba(69, 88, 177, 0.07) !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button *,
+    [data-testid="stFileUploader"] button * {
+        color: #405bc1 !important;
+        background: transparent !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] button:hover,
+    [data-testid="stFileUploader"] button:hover {
+        color: #304cab !important;
+        background: linear-gradient(
+            180deg,
+            #edf2ff 0%,
+            #dde7ff 100%
+        ) !important;
+        border-color: #bcc9f1 !important;
+    }
+
+    /* ======================================================
+       普通按钮和下载按钮
+       ====================================================== */
+    .stButton > button:not([kind="primary"]),
+    .stDownloadButton > button,
+    [data-testid="stDownloadButton"] > button {
+        color: #40599c !important;
+        background: linear-gradient(
+            180deg,
+            #f8faff 0%,
+            #eaf0ff 100%
+        ) !important;
+        background-color: #f0f4ff !important;
+        border: 1px solid #d5def3 !important;
+        border-radius: 12px !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .stButton > button:not([kind="primary"]) *,
+    .stDownloadButton > button *,
+    [data-testid="stDownloadButton"] > button * {
+        color: #40599c !important;
+        background: transparent !important;
+    }
+
+    .stButton > button:not([kind="primary"]):hover,
+    .stDownloadButton > button:hover,
+    [data-testid="stDownloadButton"] > button:hover {
+        color: #ffffff !important;
+        background: linear-gradient(
+            105deg,
+            #5575f5 0%,
+            #8d58e9 100%
+        ) !important;
+        border-color: transparent !important;
+        box-shadow: 0 8px 18px rgba(77, 78, 211, 0.18) !important;
+    }
+
+    .stButton > button:not([kind="primary"]):hover *,
+    .stDownloadButton > button:hover *,
+    [data-testid="stDownloadButton"] > button:hover * {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+    }
+
+    .stButton > button[kind="primary"],
+    [data-testid="baseButton-primary"] {
+        color: #ffffff !important;
+        background: linear-gradient(
+            105deg,
+            #4774f7 0%,
+            #984ce9 100%
+        ) !important;
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: 0 11px 23px rgba(75, 74, 220, 0.21) !important;
+    }
+
+    .stButton > button[kind="primary"] *,
+    [data-testid="baseButton-primary"] * {
+        color: #ffffff !important;
+        background: transparent !important;
+    }
+
+    /* ======================================================
+       展开面板
+       ====================================================== */
+    [data-testid="stExpander"],
+    [data-testid="stExpander"] details,
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary * {
+        color-scheme: light !important;
+    }
+
+    [data-testid="stExpander"] {
+        border: 1px solid #dfe5f3 !important;
+        border-radius: 14px !important;
+        background: #fafbff !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+    }
+
+    [data-testid="stExpander"] summary {
+        color: #31477e !important;
+        background: linear-gradient(
+            180deg,
+            #fbfcff 0%,
+            #f1f5ff 100%
+        ) !important;
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+    }
+
+    [data-testid="stExpander"] summary:hover {
+        color: #4059be !important;
+        background: linear-gradient(
+            180deg,
+            #f3f6ff 0%,
+            #e9efff 100%
+        ) !important;
+    }
+
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span {
+        color: inherit !important;
+        background: transparent !important;
+    }
+
+    [data-testid="stExpander"] details > div {
+        color: #304575 !important;
+        background: #ffffff !important;
+    }
+
+    /* ======================================================
+       所有可交互控件禁用黑色浏览器焦点轮廓
+       ====================================================== */
+    button,
+    input,
+    textarea,
+    summary,
+    [role="slider"],
+    [role="button"],
+    [tabindex] {
+        -webkit-tap-highlight-color: transparent !important;
+    }
+
+    button:focus,
+    button:focus-visible,
+    input:focus,
+    input:focus-visible,
+    textarea:focus,
+    textarea:focus-visible,
+    summary:focus,
+    summary:focus-visible,
+    [role="slider"]:focus,
+    [role="slider"]:focus-visible,
+    [role="button"]:focus,
+    [role="button"]:focus-visible {
+        outline: 0 !important;
+        outline-width: 0 !important;
+        outline-color: transparent !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 font_files = get_font_files()
 
 if not font_files:
